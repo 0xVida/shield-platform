@@ -101,6 +101,29 @@ describe("vault settings", () => {
     )
   })
 
+  test("include the indexer's optional start ledger and poll interval", () => {
+    const config = loadConfig({
+      ...required,
+      ...chain,
+      INDEXER_START_LEDGER: "5476000",
+      INDEXER_POLL_MS: "10000",
+    })
+    expect(config.INDEXER_START_LEDGER).toBe(5476000)
+    expect(config.INDEXER_POLL_MS).toBe(10000)
+    expect(loadConfig(required).INDEXER_START_LEDGER).toBeUndefined()
+  })
+
+  test("reject an invalid start ledger or a poll interval under a second", () => {
+    for (const INDEXER_START_LEDGER of ["0", "-5", "1.5", "abc"]) {
+      expect(() => loadConfig({ ...required, INDEXER_START_LEDGER })).toThrow(
+        /INDEXER_START_LEDGER/
+      )
+    }
+    expect(() => loadConfig({ ...required, INDEXER_POLL_MS: "100" })).toThrow(
+      /INDEXER_POLL_MS/
+    )
+  })
+
   test("reject a vault id that isn't a contract address", () => {
     const account = "GCFIRY65OQE7DFP5KLNS2PF2LVZMUZYJX4OZIEQ36N2IQANUB5XVYOJR"
     expect(() =>

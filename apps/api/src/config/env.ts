@@ -50,6 +50,12 @@ const EnvSchema = z.object({
     .string()
     .refine(StrKey.isValidContract, "must be a contract address (C...)")
     .optional(),
+  // While the vault is configured, its events are indexed into MongoDB. The first
+  // start reads from this ledger; unset, from the oldest the RPC still has (about
+  // a week back on testnet).
+  INDEXER_START_LEDGER: z.coerce.number().int().min(1).optional(),
+  // How often the indexer checks for new events. Unset, every 5 s (about a ledger).
+  INDEXER_POLL_MS: z.coerce.number().int().min(1000).optional(),
 })
 
 const CHAIN_KEYS = [

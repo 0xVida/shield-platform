@@ -1,3 +1,4 @@
+import { rpc } from "@stellar/stellar-sdk"
 import type {
   AssembledTransaction,
   ClientOptions,
@@ -11,6 +12,7 @@ import {
   fieldToBytes32,
 } from "./encoding"
 import { toVaultError } from "./errors"
+import { parseVaultEvent, type VaultEventPage } from "./events"
 import { Client } from "./vault-bindings"
 
 /** Where the vault lives. The contract id comes from config, never from code. */
@@ -128,9 +130,58 @@ export class ShieldVaultClient {
     return checked(tx)
   }
 
+  /**
+   * One page of the vault's events, oldest first: from a ledger, or from the
+   * `cursor` of the previous page. The RPC only keeps recent ledgers (about a week
+   * on testnet), so a start older than the page's `oldestLedger` can't be served.
+   */
+  async getEvents(
+    start: { ledger: number } | { cursor: string },
+    limit = 100
+  ): Promise<VaultEventPage> {
+    const server = this.server()
+    const filters = [
+      { type: "contract" as const, contractIds: [this.connection.contractId] },
+    ]
+    const response = await server.getEvents(
+      "cursor" in start
+        ? { filters, cursor: start.cursor, limit }
+        : { filters, startLedger: start.ledger, limit }
+    )
+    const spec = this.client().spec
+    return {
+      events: response.events.flatMap((event) => {
+        const parsed = parseVaultEvent(spec, event)
+        return parsed ? [parsed] : []
+      }),
+      received: response.events.length,
+      cursor: response.cursor,
+      latestLedger: response.latestLedger,
+      oldestLedger: response.oldestLedger,
+    }
+  }
+
+  /**
+   * The ledgers the RPC can serve events for. getEvents rejects a start ledger
+   * outside this range.
+   */
+  async getLedgerRange(): Promise<{
+    oldestLedger: number
+    latestLedger: number
+  }> {
+    const { oldestLedger, latestLedger } = await this.server().getHealth()
+    return { oldestLedger, latestLedger }
+  }
+
   /** Bindings client whose transactions use `publicKey` as the source account. */
   private client(publicKey?: string): Client {
     return new Client({ ...this.connection, publicKey })
+  }
+
+  private server(): rpc.Server {
+    return new rpc.Server(this.connection.rpcUrl, {
+      allowHttp: this.connection.allowHttp,
+    })
   }
 }
 

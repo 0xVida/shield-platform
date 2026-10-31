@@ -1,4 +1,5 @@
 export * from "./encoding"
 export * from "./errors"
+export * from "./events"
 export * from "./vault"
 export * from "./submit"

@@ -1,0 +1,46 @@
+{
+  "description": "A real getEvents response (xdrFormat base64) from Stellar testnet, for a private ShieldVault deployment: one fund_batch, then one withdraw paid with a real Groth16 claim proof. Recorded 2026-11-01 from soroban-testnet.stellar.org. Used to test event decoding against what the network actually returns.",
+  "fundTx": "66cf1b6656251dcb2182c27915a3678322126f5416eec73c335533022a6d5fb2",
+  "withdrawTx": "f66ae8f934cd197956838bb403ce4d04b69302cd2df7203aeff102c802348006",
+  "response": {
+    "events": [
+      {
+        "type": "contract",
+        "ledger": 5476023,
+        "ledgerClosedAt": "2026-10-30T23:42:35Z",
+        "contractId": "CB6RKTUOZVQKEKFMJFIKVM4C7JS7VRVDYK3IBQSW5GKBOSOEYXVZMFRK",
+        "id": "0023519339697172480-0000000001",
+        "operationIndex": 0,
+        "transactionIndex": 7,
+        "txHash": "66cf1b6656251dcb2182c27915a3678322126f5416eec73c335533022a6d5fb2",
+        "topic": [
+          "AAAADwAAAAZzaGllbGQAAA==",
+          "AAAADwAAAAZmdW5kZWQAAA==",
+          "AAAABQAAAaGPMX9E"
+        ],
+        "value": "AAAAEQAAAAEAAAAEAAAADwAAAAZmdW5kZXIAAAAAABIAAAAAAAAAAE08Drlfs8IvmZrxtaMTDmFmIXsp0469NeE8QqedPjlQAAAADwAAAARyb290AAAADQAAACAUTOb2+mHrOjSuuhzElCtDD74IjIZzNUxd4hUxqimEkQAAAA8AAAAFdG9rZW4AAAAAAAASAAAAAdeSi3LCcDzP6vfrn/TvTVBKVai5efybRQ6iyEK00c5hAAAADwAAAAV0b3RhbAAAAAAAAAoAAAAAAAAAAAAAAAACrqVA"
+      },
+      {
+        "type": "contract",
+        "ledger": 5476025,
+        "ledgerClosedAt": "2026-10-30T23:42:45Z",
+        "contractId": "CB6RKTUOZVQKEKFMJFIKVM4C7JS7VRVDYK3IBQSW5GKBOSOEYXVZMFRK",
+        "id": "0023519348287094784-0000000001",
+        "operationIndex": 0,
+        "transactionIndex": 4,
+        "txHash": "f66ae8f934cd197956838bb403ce4d04b69302cd2df7203aeff102c802348006",
+        "topic": [
+          "AAAADwAAAAZzaGllbGQAAA==",
+          "AAAADwAAAAl3aXRoZHJhd24AAAA=",
+          "AAAABQAAAaGPMX9E"
+        ],
+        "value": "AAAAEQAAAAEAAAADAAAADwAAAAZhbW91bnQAAAAAAAoAAAAAAAAAAAAAAAABfXhAAAAADwAAAAludWxsaWZpZXIAAAAAAAANAAAAIBBjVQe2s/oh95lmk8sn3uPM04ukKcdCzscDRrivUv9XAAAADwAAAAlyZWNpcGllbnQAAAAAAAASAAAAAAAAAACSDWlaKAxUbnuSMgmLsSm3nenybl8fmF3qblV3vqL4hg=="
+      }
+    ],
+    "cursor": "0023561438966579199-4294967295",
+    "latestLedger": 5493127,
+    "oldestLedger": 5372168,
+    "latestLedgerCloseTime": "1793489275",
+    "oldestLedgerCloseTime": "1792884427"
+  }
+}
