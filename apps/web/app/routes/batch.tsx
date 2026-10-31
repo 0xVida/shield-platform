@@ -296,7 +296,7 @@ function saveFunding(batchId: string, funding: Funding | undefined) {
 /** Step 3: the disburser's wallet deposits the total into the vault. */
 function FundStep({ batch, vault }: { batch: Batch; vault: VaultConnection | null }) {
   const fetcher = useFetcher<typeof clientAction>()
-  const { address: funder, signTx } = useWallet()
+  const { address: funder, signTransaction } = useWallet()
   const [token, setToken] = useState<string>(import.meta.env.VITE_TOKEN_CONTRACT_ID ?? "")
   const [sent, setSent] = useState<Funding>()
   const [funding, setFunding] = useState(false)
@@ -322,7 +322,13 @@ function FundStep({ batch, vault }: { batch: Batch; vault: VaultConnection | nul
     setFunding(true)
     setError(undefined)
     try {
-      const txHash = await fundBatch({ vault, batch, funder, token: token.trim(), signTx })
+      const txHash = await fundBatch({
+        vault,
+        batch,
+        funder,
+        token: token.trim(),
+        signTransaction,
+      })
       const sentFunding = { funder, token: token.trim(), txHash }
       saveFunding(batch.batchId, sentFunding)
       setSent(sentFunding)

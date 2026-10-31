@@ -1,5 +1,18 @@
-import React, { createContext, useContext, useState, useEffect } from "react"
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useMemo,
+  useRef,
+} from "react"
 import freighterPkg from "@stellar/freighter-api"
+import {
+  APP_NETWORK_PASSPHRASE,
+  freighterSigner,
+  type SignTransaction,
+  type WalletState,
+} from "../lib/wallet"
 
 
 const freighter: any = (freighterPkg as any)?.default || freighterPkg
@@ -8,6 +21,7 @@ const freighterRequestAccess = freighter?.requestAccess
 const freighterGetAddress = freighter?.getAddress
 const getNetworkDetails = freighter?.getNetworkDetails
 const freighterSignTx = freighter?.signTransaction
+const FreighterWatcher = freighter?.WatchWalletChanges
 
 interface WalletContextType {
   address: string | null
@@ -15,9 +29,15 @@ interface WalletContextType {
   isConnecting: boolean
   hasFreighter: boolean | null
   network: string | null
+  /** The network Freighter is on, or null if it couldn't be read. */
+  networkPassphrase: string | null
+  /** True when Freighter is on another network than the app's contracts. */
+  isWrongNetwork: boolean
   error: string | null
   connect: () => Promise<string | null>
   disconnect: () => void
+  /** Signs for submitTransaction. Refuses on the wrong network. */
+  signTransaction: SignTransaction
   signTx: (xdr: string) => Promise<string>
 }
 
@@ -27,9 +47,12 @@ const WalletContext = createContext<WalletContextType>({
   isConnecting: false,
   hasFreighter: null,
   network: null,
+  networkPassphrase: null,
+  isWrongNetwork: false,
   error: null,
   connect: async () => null,
   disconnect: () => {},
+  signTransaction: async () => ({ signedTxXdr: "" }),
   signTx: async () => "",
 })
 
@@ -38,7 +61,34 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   const [isConnecting, setIsConnecting] = useState(false)
   const [hasFreighter, setHasFreighter] = useState<boolean | null>(null)
   const [network, setNetwork] = useState<string | null>(null)
+  const [networkPassphrase, setNetworkPassphrase] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+
+  // The signer reads the wallet's state when it signs, so it's always current
+  const state = useRef<WalletState>({ address, networkPassphrase })
+  state.current = { address, networkPassphrase }
+  const signTransaction = useMemo(
+    () => freighterSigner(freighterSignTx, () => state.current),
+    []
+  )
+
+  // Follow account and network switches made in Freighter after the page loaded
+  useEffect(() => {
+    if (!hasFreighter || !FreighterWatcher) return
+    const watcher = new FreighterWatcher(3000)
+    watcher.watch((info: { address: string; network: string; networkPassphrase: string; error?: unknown }) => {
+      if (info.error) return
+      setNetwork(info.network || null)
+      setNetworkPassphrase(info.networkPassphrase || null)
+      // Only follow the account while connected; never connect on the user's behalf
+      setAddress((current) => {
+        if (!current || !info.address || info.address === current) return current
+        localStorage.setItem("shield_stellar_wallet", info.address)
+        return info.address
+      })
+    })
+    return () => watcher.stop()
+  }, [hasFreighter])
 
   useEffect(() => {
     if (typeof window === "undefined") return
@@ -65,6 +115,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
           try {
             const net = await getNetworkDetails()
             if (net && net.network) setNetwork(net.network)
+            if (net && net.networkPassphrase) setNetworkPassphrase(net.networkPassphrase)
           } catch {}
         } else {
           setHasFreighter(false)
@@ -108,6 +159,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         try {
           const net = await getNetworkDetails()
           if (net && net.network) setNetwork(net.network)
+          if (net && net.networkPassphrase) setNetworkPassphrase(net.networkPassphrase)
         } catch {}
         return accessRes.address
       }
@@ -128,13 +180,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   }
 
   async function signTx(xdr: string): Promise<string> {
-    const res = await freighterSignTx(xdr, {
-      networkPassphrase: "Test SDF Network ; September 2015",
-    })
-    if (typeof res === "string") return res
-    if (res.signedTxXdr) return res.signedTxXdr
-    if (res.error) throw new Error(res.error.message || "Signing failed")
-    throw new Error("Failed to sign transaction")
+    return (await signTransaction(xdr)).signedTxXdr
   }
 
   return (
@@ -145,9 +191,13 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         isConnecting,
         hasFreighter,
         network,
+        networkPassphrase,
+        isWrongNetwork:
+          !!networkPassphrase && networkPassphrase !== APP_NETWORK_PASSPHRASE,
         error,
         connect,
         disconnect,
+        signTransaction,
         signTx,
       }}
     >

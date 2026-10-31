@@ -1,4 +1,5 @@
 import type { Batch, VaultConnection } from "./api"
+import type { SignTransaction } from "./wallet"
 
 /**
  * Funds a proved batch, step 3 of the end-to-end flow. Person 3's ShieldVaultClient
@@ -11,13 +12,14 @@ export async function fundBatch({
   batch,
   funder,
   token,
-  signTx,
+  signTransaction,
 }: {
   vault: VaultConnection
   batch: Batch
   funder: string
   token: string
-  signTx: (xdr: string) => Promise<string>
+  /** The wallet's signer, e.g. useWallet().signTransaction. */
+  signTransaction: SignTransaction
 }): Promise<string> {
   if (!batch.proof) throw new Error("The batch has no conservation proof yet")
 
@@ -33,12 +35,7 @@ export async function fundBatch({
     proof: hexToBytes(batch.proof),
   })
   try {
-    const { hash } = await submitTransaction(tx, {
-      signTransaction: async (xdr) => ({
-        signedTxXdr: await signTx(xdr),
-        signerAddress: funder,
-      }),
-    })
+    const { hash } = await submitTransaction(tx, { signTransaction })
     return hash
   } catch (error) {
     // Sent, but its outcome isn't known yet. Return the hash anyway, so the page keeps
