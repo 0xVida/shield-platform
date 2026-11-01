@@ -9,6 +9,7 @@ import type { BatchStore } from "./db/batches"
 import { jsonReplacer } from "./lib/json"
 import { errorHandler, notFound } from "./middleware/error-handler"
 import type { ConservationProofs } from "./proving/proofs"
+import { activityRouter, type ActivitySource } from "./routes/activity"
 import { batchesRouter, type VaultReader } from "./routes/batches"
 import { configRouter } from "./routes/config"
 import { healthRouter, type ReadinessCheck } from "./routes/health"
@@ -30,6 +31,8 @@ export type AppDeps = {
   proofs?: ConservationProofs
   /** Undefined when the vault isn't configured. */
   vault?: VaultReader
+  /** The vault's indexed events. Undefined when the vault isn't configured. */
+  activity?: ActivitySource
 }
 
 // Accept a caller's request id only if it is short and log-safe.
@@ -44,6 +47,7 @@ export function createApp({
   batches,
   proofs,
   vault,
+  activity,
 }: AppDeps): Express {
   const app = express()
   app.set("json replacer", jsonReplacer)
@@ -96,6 +100,7 @@ export function createApp({
     )
   }
   app.use("/v1", configRouter(vaultConnection(config)))
+  app.use("/v1", activityRouter(activity))
   app.use(
     claimRouter({
       store: batches,
