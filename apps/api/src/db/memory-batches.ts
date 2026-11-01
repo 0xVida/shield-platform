@@ -39,6 +39,15 @@ export class MemoryBatchStore implements BatchStore {
     return this.allocationsByBatch.get(batchId) ?? []
   }
 
+  async allocationByRecipient(
+    batchId: bigint,
+    recipient: string
+  ): Promise<AllocationRecord | undefined> {
+    return this.allocationsByBatch
+      .get(batchId)
+      ?.find((a) => a.recipient === recipient)
+  }
+
   async setStatus(
     batchId: bigint,
     from: BatchStatus,

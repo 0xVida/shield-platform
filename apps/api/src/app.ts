@@ -96,7 +96,12 @@ export function createApp({
     )
   }
   app.use("/v1", configRouter(vaultConnection(config)))
-  app.use(claimRouter())
+  app.use(
+    claimRouter({
+      store: batches,
+      claimDataKey: config.CLAIM_DATA_KEY,
+    })
+  )
 
   app.use(notFound)
   app.use(errorHandler)

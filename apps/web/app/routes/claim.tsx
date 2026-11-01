@@ -15,6 +15,8 @@ import {
   Receipt,
   FileCode,
   ArrowSquareOut,
+  MagnifyingGlass,
+  SlidersHorizontal,
 } from "@phosphor-icons/react"
 import { Button } from "@workspace/ui/components/button"
 import {
@@ -30,6 +32,8 @@ import {
 } from "@workspace/sdk/chain"
 import { useWallet } from "../context/wallet-context"
 import { WalletConnectButton } from "../components/wallet-button"
+import { api, type PreparedClaim } from "../lib/api"
+import { formatAmount } from "../lib/amount"
 
 // Depth-10 sample vector from batch.json (Batch 42, allocation 0)
 const DEMO_CLAIM = {
@@ -58,6 +62,15 @@ export default function ClaimPage() {
   const [searchParams] = useSearchParams()
   const { address: walletAddress, isConnected: isWalletConnected, signTransaction } = useWallet()
 
+  // SDP Lookup states
+  const [sdpBatchId, setSdpBatchId] = useState(searchParams.get("batch") || "")
+  const [sdpRecipientId, setSdpRecipientId] = useState(searchParams.get("recipient") || "")
+  const [isLookingUp, setIsLookingUp] = useState(false)
+  const [retrievedClaim, setRetrievedClaim] = useState<PreparedClaim | null>(null)
+  const [manualMode, setManualMode] = useState(
+    !searchParams.get("recipient") && !searchParams.get("batch")
+  )
+
   // Form states
   const [batchId, setBatchId] = useState(searchParams.get("batch") || DEMO_CLAIM.batchId)
   const [amount, setAmount] = useState(searchParams.get("amount") || DEMO_CLAIM.amount)
@@ -72,7 +85,9 @@ export default function ClaimPage() {
   const [pathElements, setPathElements] = useState<string[]>(DEMO_CLAIM.pathElements)
   const [pathIndices, setPathIndices] = useState<number[]>(DEMO_CLAIM.pathIndices)
   const [recipient, setRecipient] = useState(
-    searchParams.get("recipient") || "GCFIRY65OQE7DFP5KLNS2PF2LVZMUZYJX4OZIEQ36N2IQANUB5XVYOJR"
+    searchParams.get("recipient") && searchParams.get("recipient")?.startsWith("G")
+      ? searchParams.get("recipient")!
+      : "GCFIRY65OQE7DFP5KLNS2PF2LVZMUZYJX4OZIEQ36N2IQANUB5XVYOJR"
   )
 
   // Flow & proving states
@@ -88,6 +103,15 @@ export default function ClaimPage() {
   const [submitStage, setSubmitStage] = useState<SubmitStage | null>(null)
   const [txHash, setTxHash] = useState<string | null>(null)
 
+  // Auto-lookup if batch and recipient parameters are present in URL
+  useEffect(() => {
+    const qBatch = searchParams.get("batch")
+    const qRecipient = searchParams.get("recipient")
+    if (qBatch && qRecipient) {
+      handleLookupClaim(qBatch, qRecipient)
+    }
+  }, [searchParams])
+
   // Auto-fill connected wallet if recipient was unchanged default
   useEffect(() => {
     if (
@@ -98,7 +122,38 @@ export default function ClaimPage() {
     }
   }, [walletAddress])
 
+  async function handleLookupClaim(lookupBatch: string, lookupRecipient: string) {
+    if (!lookupBatch.trim() || !lookupRecipient.trim()) return
+    setError(null)
+    setIsLookingUp(true)
+    try {
+      const data = await api.prepareClaim({
+        batchId: lookupBatch.trim(),
+        recipient: lookupRecipient.trim(),
+      })
+      setRetrievedClaim(data)
+      setBatchId(data.batchId)
+      setAmount(data.amount)
+      setSecret(data.secret)
+      setLeafIndex(data.leafIndex)
+      setRoot(data.root)
+      setNullifierHash(data.nullifierHash)
+      setPathElements(data.pathElements)
+      setPathIndices(data.pathIndices)
+      setManualMode(false)
+    } catch (err: any) {
+      console.warn("Could not retrieve claim from API:", err)
+      setError(
+        err?.message ||
+          "Could not retrieve allocation. You can use manual entry or demo data."
+      )
+    } finally {
+      setIsLookingUp(false)
+    }
+  }
+
   function loadDemoData() {
+    setRetrievedClaim(null)
     setBatchId(DEMO_CLAIM.batchId)
     setAmount(DEMO_CLAIM.amount)
     setSecret(DEMO_CLAIM.secret)
@@ -108,6 +163,7 @@ export default function ClaimPage() {
     setPathElements(DEMO_CLAIM.pathElements)
     setPathIndices(DEMO_CLAIM.pathIndices)
     setError(null)
+    setManualMode(true)
   }
 
   async function handleGenerateProof() {
@@ -167,14 +223,11 @@ export default function ClaimPage() {
         rpcUrl: TESTNET_CONFIG.rpcUrl,
       })
 
-      // Clean nullifier for u256 conversion
       const cleanNullifier = nullifierHash.startsWith("0x")
         ? nullifierHash.slice(2)
         : nullifierHash
       const nullifierBigInt = BigInt("0x" + cleanNullifier)
 
-      // The connected wallet submits the claim and pays the fee. The proof binds the
-      // payout to `recipient`, so this needn't be the recipient's own wallet.
       const tx = await client.buildWithdraw({
         source: walletAddress,
         batchId: BigInt(batchId),
@@ -192,7 +245,7 @@ export default function ClaimPage() {
       setStep(4)
     } catch (err: any) {
       console.error("Withdrawal error:", err)
-      setError(err?.message || "Withdrawal failed")
+      setError(err?.message || "Withdrawal failed on-chain")
     } finally {
       setIsSubmitting(false)
       setSubmitStage(null)
@@ -235,10 +288,10 @@ export default function ClaimPage() {
             </div>
 
             <Link
-              to="/"
+              to="/batches"
               className="text-neutral-400 hover:text-white transition-colors duration-150"
             >
-              Overview
+              Batches
             </Link>
 
             {/* Stellar Wallet Connect */}
@@ -301,7 +354,6 @@ export default function ClaimPage() {
 
         {/* Main Card */}
         <div className="bg-neutral-900/80 border border-neutral-800/80 rounded-2xl p-6 sm:p-8 backdrop-blur-xl shadow-2xl relative overflow-hidden">
-          {/* Subtle glow effect */}
           <div className="absolute top-0 right-0 w-72 h-72 bg-emerald-500/5 rounded-full blur-3xl pointer-events-none" />
 
           {error && (
@@ -314,7 +366,7 @@ export default function ClaimPage() {
             </div>
           )}
 
-          {/* STEP 1: ALLOCATION INPUT */}
+          {/* STEP 1: ALLOCATION INPUT & SDP RETRIEVAL */}
           {step === 1 && (
             <div className="space-y-6">
               <div className="flex items-center justify-between pb-4 border-b border-neutral-800">
@@ -323,85 +375,192 @@ export default function ClaimPage() {
                     1. Private Allocation Data
                   </h2>
                   <p className="text-xs text-neutral-400">
-                    Received through SDP invitation channel or disbursement claim invite.
+                    Retrieve via SDP invitation channel or enter claim credentials.
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={loadDemoData}
-                  className="text-xs text-emerald-400 hover:text-emerald-300 flex items-center gap-1.5 transition-colors font-medium bg-emerald-950/40 border border-emerald-800/40 px-2.5 py-1 rounded-md cursor-pointer"
-                >
-                  <ArrowsClockwise size={13} />
-                  Load Sample (Batch 42)
-                </button>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-medium text-neutral-300 mb-1.5">
-                    Batch ID (u64)
-                  </label>
-                  <input
-                    type="text"
-                    value={batchId}
-                    onChange={(e) => setBatchId(e.target.value)}
-                    className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500 transition-colors font-mono"
-                    placeholder="42"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium text-neutral-300 mb-1.5">
-                    Allocation Amount (Stroops / Base Units)
-                  </label>
-                  <input
-                    type="text"
-                    value={amount}
-                    onChange={(e) => setAmount(e.target.value)}
-                    className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500 transition-colors font-mono font-medium text-emerald-400"
-                    placeholder="50"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium text-neutral-300 mb-1.5">
-                    Private Secret (Opening)
-                  </label>
-                  <input
-                    type="password"
-                    value={secret}
-                    onChange={(e) => setSecret(e.target.value)}
-                    className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500 transition-colors font-mono"
-                    placeholder="Secret key or random field element"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium text-neutral-300 mb-1.5">
-                    Leaf Index
-                  </label>
-                  <input
-                    type="number"
-                    value={leafIndex}
-                    onChange={(e) => setLeafIndex(Number(e.target.value))}
-                    className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500 transition-colors font-mono"
-                    placeholder="0"
-                  />
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setManualMode(!manualMode)}
+                    className="text-xs text-neutral-400 hover:text-white flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-neutral-800 transition-colors"
+                  >
+                    <SlidersHorizontal size={13} />
+                    {manualMode ? "SDP Lookup" : "Custom Params"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={loadDemoData}
+                    className="text-xs text-emerald-400 hover:text-emerald-300 flex items-center gap-1.5 transition-colors font-medium bg-emerald-950/40 border border-emerald-800/40 px-2.5 py-1 rounded-md cursor-pointer"
+                  >
+                    <ArrowsClockwise size={13} />
+                    Load Sample (Batch 42)
+                  </button>
                 </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-medium text-neutral-300 mb-1.5">
-                  Merkle Tree Root
-                </label>
-                <input
-                  type="text"
-                  value={root}
-                  onChange={(e) => setRoot(e.target.value)}
-                  className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-xs text-neutral-300 focus:outline-none focus:border-emerald-500 transition-colors font-mono"
-                  placeholder="0x..."
-                />
-              </div>
+              {/* SDP Onboarding / Claim Retrieval Form */}
+              {!manualMode && (
+                <div className="space-y-4">
+                  <div className="p-4 rounded-xl bg-neutral-950/60 border border-neutral-800/80 space-y-3">
+                    <div className="flex items-center gap-2 text-xs font-medium text-emerald-400">
+                      <MagnifyingGlass size={15} />
+                      <span>SDP Recipient Onboarding & Credential Retrieval</span>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[11px] font-medium text-neutral-400 mb-1">
+                          Batch ID (from disbursement invitation)
+                        </label>
+                        <input
+                          type="text"
+                          value={sdpBatchId}
+                          onChange={(e) => setSdpBatchId(e.target.value)}
+                          placeholder="e.g. 42"
+                          className="w-full bg-neutral-900 border border-neutral-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 font-mono"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-medium text-neutral-400 mb-1">
+                          Recipient Reference (email, phone, or SDP ID)
+                        </label>
+                        <input
+                          type="text"
+                          value={sdpRecipientId}
+                          onChange={(e) => setSdpRecipientId(e.target.value)}
+                          placeholder="e.g. alice@example.com"
+                          className="w-full bg-neutral-900 border border-neutral-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 font-mono"
+                        />
+                      </div>
+                    </div>
+                    <div className="flex justify-end pt-1">
+                      <Button
+                        disabled={isLookingUp || !sdpBatchId.trim() || !sdpRecipientId.trim()}
+                        onClick={() => handleLookupClaim(sdpBatchId, sdpRecipientId)}
+                        className="bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-emerald-300 text-xs font-semibold px-4 py-1.5 rounded-lg flex items-center gap-1.5 cursor-pointer disabled:opacity-40"
+                      >
+                        {isLookingUp ? (
+                          <>
+                            <ArrowsClockwise size={13} className="animate-spin" />
+                            Fetching Credential...
+                          </>
+                        ) : (
+                          <>
+                            <Receipt size={14} />
+                            Retrieve Confidential Allocation
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Retrieved Allocation Card */}
+                  {retrievedClaim && (
+                    <div className="p-4 rounded-xl bg-emerald-950/20 border border-emerald-500/30 space-y-3 animate-in fade-in-50">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold text-white flex items-center gap-2">
+                          <CheckCircle size={16} className="text-emerald-400" />
+                          Confidential Allocation Verified
+                        </span>
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-950 border border-emerald-700/50 text-emerald-300 font-medium">
+                          {retrievedClaim.isSpent ? "Already Claimed" : "Ready to Claim"}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 pt-1 text-xs">
+                        <div>
+                          <span className="text-neutral-500 block text-[11px]">Private Allocation</span>
+                          <span className="text-base font-bold text-emerald-400 font-mono">
+                            {formatAmount(BigInt(retrievedClaim.amount))} Tokens
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-neutral-500 block text-[11px]">Recipient Reference</span>
+                          <span className="text-xs font-medium text-neutral-200 truncate block">
+                            {retrievedClaim.recipient}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-neutral-500 block text-[11px]">Batch ID</span>
+                          <span className="text-xs font-mono text-neutral-300">
+                            #{retrievedClaim.batchId}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Manual parameter inputs (visible when manualMode is active or for sample) */}
+              {manualMode && (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-medium text-neutral-300 mb-1.5">
+                        Batch ID (u64)
+                      </label>
+                      <input
+                        type="text"
+                        value={batchId}
+                        onChange={(e) => setBatchId(e.target.value)}
+                        className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500 transition-colors font-mono"
+                        placeholder="42"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium text-neutral-300 mb-1.5">
+                        Allocation Amount (Stroops / Base Units)
+                      </label>
+                      <input
+                        type="text"
+                        value={amount}
+                        onChange={(e) => setAmount(e.target.value)}
+                        className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500 transition-colors font-mono font-medium text-emerald-400"
+                        placeholder="50"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium text-neutral-300 mb-1.5">
+                        Private Secret (Opening)
+                      </label>
+                      <input
+                        type="password"
+                        value={secret}
+                        onChange={(e) => setSecret(e.target.value)}
+                        className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500 transition-colors font-mono"
+                        placeholder="Secret key or random field element"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium text-neutral-300 mb-1.5">
+                        Leaf Index
+                      </label>
+                      <input
+                        type="number"
+                        value={leafIndex}
+                        onChange={(e) => setLeafIndex(Number(e.target.value))}
+                        className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500 transition-colors font-mono"
+                        placeholder="0"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-neutral-300 mb-1.5">
+                      Merkle Tree Root
+                    </label>
+                    <input
+                      type="text"
+                      value={root}
+                      onChange={(e) => setRoot(e.target.value)}
+                      className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-xs text-neutral-300 focus:outline-none focus:border-emerald-500 transition-colors font-mono"
+                      placeholder="0x..."
+                    />
+                  </div>
+                </div>
+              )}
 
               <div className="pt-2 flex justify-end">
                 <Button
@@ -423,8 +582,8 @@ export default function ClaimPage() {
                   2. Recipient Wallet Binding (D4)
                 </h2>
                 <p className="text-xs text-neutral-400">
-                  Your Stellar address is cryptographically bound inside the circuit constraints,
-                  guaranteeing miners or relayers cannot front-run or redirect your payout.
+                  Your Stellar payout address is cryptographically bound inside the circuit constraints,
+                  guaranteeing miners or relayers cannot front-run or redirect your funds.
                 </p>
               </div>
 
@@ -599,33 +758,28 @@ export default function ClaimPage() {
                 >
                   Back
                 </Button>
-                {isWalletConnected ? (
-                  <Button
-                    disabled={isSubmitting}
-                    onClick={handleWithdraw}
-                    className="bg-emerald-500 hover:bg-emerald-400 text-neutral-950 font-semibold px-5 flex items-center gap-2 cursor-pointer disabled:opacity-50"
-                  >
-                    {isSubmitting ? (
-                      <>
-                        <ArrowsClockwise size={16} className="animate-spin" />
-                        {submitStage === "signing"
-                          ? "Confirm in your wallet..."
-                          : submitStage === "confirming"
-                            ? "Waiting for confirmation..."
-                            : "Sending to Testnet..."}
-                      </>
-                    ) : (
-                      <>
-                        <CheckCircle size={16} />
-                        {walletAddress === recipient
-                          ? "Sign with Freighter & Claim"
-                          : "Claim (your wallet pays the fee)"}
-                      </>
-                    )}
-                  </Button>
-                ) : (
-                  <WalletConnectButton />
-                )}
+                <Button
+                  disabled={isSubmitting || !walletAddress}
+                  onClick={handleWithdraw}
+                  className="bg-emerald-500 hover:bg-emerald-400 text-neutral-950 font-semibold px-5 flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                >
+                  {isSubmitting ? (
+                    <>
+                      <ArrowsClockwise size={16} className="animate-spin" />
+                      {submitStage ? `${submitStage}...` : "Submitting Claim..."}
+                    </>
+                  ) : !walletAddress ? (
+                    <>
+                      <Wallet size={16} />
+                      Connect Wallet to Claim
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle size={16} />
+                      Sign with Freighter & Claim
+                    </>
+                  )}
+                </Button>
               </div>
             </div>
           )}
@@ -639,16 +793,16 @@ export default function ClaimPage() {
 
               <div>
                 <h2 className="text-xl font-bold text-white mb-1">
-                  Claim Paid Out
+                  Claim Successfully Verified!
                 </h2>
                 <p className="text-xs text-neutral-400 max-w-md mx-auto">
-                  The vault verified your proof, recorded the nullifier so this allocation
-                  can't be claimed again, and sent {amount} units to the recipient address.
+                  The on-chain verifier confirmed the Merkle inclusion proof and nullifier derivation.
+                  Funds have been allocated to your recipient address.
                 </p>
               </div>
 
               <div className="p-4 rounded-xl bg-neutral-950 border border-neutral-800 text-xs text-left max-w-lg mx-auto space-y-2">
-                <div className="text-neutral-400">Transaction:</div>
+                <div className="text-neutral-400">Transaction Status:</div>
                 <div className="font-mono text-emerald-400 text-xs break-all">
                   {txHash}
                 </div>
@@ -665,20 +819,23 @@ export default function ClaimPage() {
                     setStep(1)
                     setProofOutput(null)
                     setTxHash(null)
+                    setRetrievedClaim(null)
                   }}
                   className="border-neutral-800 text-neutral-300 hover:bg-neutral-800 cursor-pointer"
                 >
                   Start Another Claim
                 </Button>
-                <a
-                  href={`https://stellar.expert/explorer/testnet/tx/${txHash}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="bg-emerald-500 hover:bg-emerald-400 text-neutral-950 font-semibold px-4 py-2 rounded-lg text-sm inline-flex items-center gap-1.5 transition-colors cursor-pointer"
-                >
-                  View on Stellar Expert
-                  <ArrowSquareOut size={14} />
-                </a>
+                {txHash && !txHash.startsWith("Simulated") && (
+                  <a
+                    href={`https://stellar.expert/explorer/testnet/tx/${txHash}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="bg-emerald-500 hover:bg-emerald-400 text-neutral-950 font-semibold px-4 py-2 rounded-lg text-sm inline-flex items-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    View on Stellar Expert
+                    <ArrowSquareOut size={14} />
+                  </a>
+                )}
               </div>
             </div>
           )}
