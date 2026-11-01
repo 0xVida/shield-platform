@@ -102,4 +102,52 @@ export const api = {
     }),
 
   config: () => request<{ vault: VaultConnection | null }>("/v1/config"),
+
+  prepareClaim: (body: { batchId: string; recipient: string; payoutAddress?: string }) =>
+    request<PreparedClaim>("/v1/claims/prepare", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  checkClaim: (body: { batchId: string; nullifier: string; recipient?: string }) =>
+    request<any>("/v1/claims/check", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  getBatchClaims: (batchId: string) =>
+    request<{
+      batchId: string
+      root: string
+      status: string
+      total: string
+      claims: BatchClaimExport[]
+    }>(`/v1/batches/${batchId}/claims`),
 }
+
+export type PreparedClaim = {
+  batchId: string
+  recipient: string
+  leafIndex: number
+  amount: string
+  secret: string
+  root: string
+  nullifierHash: string
+  pathElements: string[]
+  pathIndices: number[]
+  batchStatus: string
+  token: string
+  funder?: string
+  isSpent: boolean
+  isEligible: boolean
+  recipientField?: string
+}
+
+export type BatchClaimExport = {
+  recipient: string
+  leafIndex: number
+  amount: string
+  nullifierHash: string
+  claimUrl: string
+}
+

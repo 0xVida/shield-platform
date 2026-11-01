@@ -4,7 +4,9 @@ import {
   ArrowLeft,
   ArrowSquareOut,
   ArrowsClockwise,
+  Check,
   CheckCircle,
+  Copy,
   Cpu,
   Coins,
   ListChecks,
@@ -19,7 +21,7 @@ import { DisburseHeader } from "../components/disburse-header"
 import { useWallet } from "../context/wallet-context"
 import { WalletConnectButton } from "../components/wallet-button"
 import { formatAmount } from "../lib/amount"
-import { ApiError, api, type Batch, type VaultConnection } from "../lib/api"
+import { ApiError, api, type Batch, type BatchClaimExport, type VaultConnection } from "../lib/api"
 import { fundBatch } from "../lib/funding"
 
 export function meta() {
@@ -435,7 +437,26 @@ function FundedStep({ batch }: { batch: Batch }) {
   const withdrawn = batch.claims ? BigInt(batch.claims.withdrawn) : undefined
   const percent = withdrawn !== undefined && total > 0n ? Number((withdrawn * 100n) / total) : 0
 
-  useEffect(() => saveFunding(batch.batchId, undefined), [batch.batchId])
+  const [claimsList, setClaimsList] = useState<BatchClaimExport[]>([])
+  const [loadingClaims, setLoadingClaims] = useState(false)
+  const [copiedIndex, setCopiedIndex] = useState<number | null>(null)
+
+  useEffect(() => {
+    saveFunding(batch.batchId, undefined)
+    setLoadingClaims(true)
+    api
+      .getBatchClaims(batch.batchId)
+      .then((res) => setClaimsList(res.claims || []))
+      .catch((err) => console.warn("Could not load batch claims:", err))
+      .finally(() => setLoadingClaims(false))
+  }, [batch.batchId])
+
+  function copyClaimLink(url: string, index: number) {
+    const fullUrl = `${window.location.origin}${url}`
+    navigator.clipboard.writeText(fullUrl)
+    setCopiedIndex(index)
+    setTimeout(() => setCopiedIndex(null), 2000)
+  }
 
   return (
     <div className="space-y-6">
@@ -471,7 +492,77 @@ function FundedStep({ batch }: { batch: Batch }) {
         </div>
       </div>
 
-      <div className="flex justify-between items-center">
+      {/* Recipient Onboarding & Claim Distribution */}
+      <div className="pt-4 border-t border-neutral-800/80 space-y-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-xs font-semibold text-neutral-200">SDP Recipient Delivery Links</h3>
+            <p className="text-[11px] text-neutral-400">
+              Share individual claim links with recipients to enable confidential proof generation and payout.
+            </p>
+          </div>
+          <span className="text-[11px] font-mono text-neutral-500">
+            {claimsList.length} recipient{claimsList.length === 1 ? "" : "s"}
+          </span>
+        </div>
+
+        {loadingClaims ? (
+          <div className="text-xs text-neutral-500 flex items-center gap-2 py-3">
+            <ArrowsClockwise size={14} className="animate-spin" />
+            Loading claim delivery links...
+          </div>
+        ) : claimsList.length === 0 ? (
+          <p className="text-xs text-neutral-500 py-2">No individual recipient links available for this batch.</p>
+        ) : (
+          <div className="border border-neutral-800 rounded-xl overflow-hidden divide-y divide-neutral-800/60 bg-neutral-950/60 max-h-60 overflow-y-auto">
+            {claimsList.map((item, idx) => (
+              <div key={idx} className="p-3 flex items-center justify-between gap-4 text-xs">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-neutral-200 truncate">{item.recipient}</span>
+                    <span className="text-[10px] bg-neutral-800 text-neutral-400 px-1.5 py-0.5 rounded font-mono">
+                      #{item.leafIndex}
+                    </span>
+                  </div>
+                  <div className="text-[11px] text-emerald-400 font-mono mt-0.5">
+                    {formatAmount(BigInt(item.amount))} tokens
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => copyClaimLink(item.claimUrl, idx)}
+                    className="h-7 text-xs border-neutral-800 text-neutral-300 hover:bg-neutral-800 flex items-center gap-1.5 cursor-pointer"
+                  >
+                    {copiedIndex === idx ? (
+                      <>
+                        <Check size={12} className="text-emerald-400" />
+                        Copied
+                      </>
+                    ) : (
+                      <>
+                        <Copy size={12} />
+                        Copy Link
+                      </>
+                    )}
+                  </Button>
+                  <Link
+                    to={item.claimUrl}
+                    target="_blank"
+                    className="h-7 px-2.5 text-xs bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-lg inline-flex items-center gap-1 font-medium transition-colors"
+                  >
+                    Open
+                    <ArrowSquareOut size={12} />
+                  </Link>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="flex justify-between items-center pt-2">
         <Button
           variant="outline"
           disabled={state !== "idle"}

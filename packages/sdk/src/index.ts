@@ -6,5 +6,5 @@ export * from "./nullifier"
 export * from "./proof"
 export * from "./protocol"
 export * from "./recipient"
-export * from "./proof"
 export * from "./constants"
+

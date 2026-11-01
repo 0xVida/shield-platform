@@ -30,3 +30,6 @@ export function nullifierHash(
   }
   return poseidon3([NULLIFIER_DOMAIN, secret, BigInt(leafIndex)])
 }
+
+/** Alias for nullifierHash */
+export const computeNullifier = nullifierHash
