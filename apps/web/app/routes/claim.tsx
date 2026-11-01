@@ -56,7 +56,7 @@ const DEMO_CLAIM = {
 
 export default function ClaimPage() {
   const [searchParams] = useSearchParams()
-  const { address: walletAddress, isConnected: isWalletConnected, signTx } = useWallet()
+  const { address: walletAddress, isConnected: isWalletConnected, signTransaction } = useWallet()
 
   // Form states
   const [batchId, setBatchId] = useState(searchParams.get("batch") || DEMO_CLAIM.batchId)
@@ -185,10 +185,7 @@ export default function ClaimPage() {
       })
 
       const { hash } = await submitTransaction(tx, {
-        signTransaction: async (xdr) => ({
-          signedTxXdr: await signTx(xdr),
-          signerAddress: walletAddress,
-        }),
+        signTransaction,
         onStage: (stage) => setSubmitStage(stage),
       })
       setTxHash(hash)

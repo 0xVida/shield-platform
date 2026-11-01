@@ -7,6 +7,8 @@ import { createApp } from "./app"
 import { loadConfig, vaultConnection } from "./config/env"
 import { MongoBatchStore } from "./db/batches"
 import { connectMongo } from "./db/mongo"
+import { MongoVaultEventStore } from "./db/vault-events"
+import { VaultIndexer } from "./indexer/vault-indexer"
 import { createLogger } from "./lib/logger"
 import {
   CONSERVATION_CIRCUIT,
@@ -70,8 +72,27 @@ if (circuitsDir && claimDataKey) {
 
 const connection = vaultConnection(config)
 const vault = connection ? new ShieldVaultClient(connection) : undefined
-if (!vault) {
-  logger.warn("funding can't be confirmed: the vault isn't configured")
+let indexer: VaultIndexer | undefined
+if (connection && vault) {
+  const vaultEvents = new MongoVaultEventStore(mongo.db)
+  await vaultEvents.ensureIndexes().catch((err: unknown) => {
+    logger.fatal({ err }, "could not create MongoDB indexes")
+    process.exit(1)
+  })
+  indexer = new VaultIndexer({
+    contractId: connection.contractId,
+    source: vault,
+    store: vaultEvents,
+    logger,
+    startLedger: config.INDEXER_START_LEDGER,
+    pollIntervalMs: config.INDEXER_POLL_MS,
+  })
+  indexer.start()
+  logger.info({ contractId: connection.contractId }, "indexing vault events")
+} else {
+  logger.warn(
+    "funding can't be confirmed and vault events aren't indexed: the vault isn't configured"
+  )
 }
 
 const app = createApp({
@@ -115,6 +136,8 @@ async function shutdown(signal: NodeJS.Signals): Promise<void> {
     await new Promise<void>((resolve, reject) =>
       server.close((err) => (err ? reject(err) : resolve()))
     )
+    // Let a poll in progress finish its writes before MongoDB closes
+    await indexer?.stop()
     await mongo.client.close()
     logger.info("shutdown complete")
     process.exit(0)

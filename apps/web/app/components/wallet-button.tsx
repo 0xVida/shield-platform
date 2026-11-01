@@ -1,5 +1,6 @@
 import { useState } from "react"
 import { useWallet } from "../context/wallet-context"
+import { APP_NETWORK_PASSPHRASE, networkName } from "../lib/wallet"
 import {
   Wallet,
   Check,
@@ -15,7 +16,16 @@ interface WalletButtonProps {
 }
 
 export function WalletConnectButton({ className = "", onAddressSelect }: WalletButtonProps) {
-  const { address, isConnected, isConnecting, hasFreighter, connect, disconnect } = useWallet()
+  const {
+    address,
+    isConnected,
+    isConnecting,
+    hasFreighter,
+    networkPassphrase,
+    isWrongNetwork,
+    connect,
+    disconnect,
+  } = useWallet()
   const [copied, setCopied] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
 
@@ -61,8 +71,15 @@ export function WalletConnectButton({ className = "", onAddressSelect }: WalletB
         >
           <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-sm shadow-emerald-400/50 animate-pulse" />
           <span className="font-mono text-emerald-300">{displayAddr}</span>
-          <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-950 border border-emerald-800/60 text-emerald-400 uppercase font-semibold">
-            Testnet
+          <span
+            className={`text-[10px] px-1.5 py-0.5 rounded border uppercase font-semibold ${
+              isWrongNetwork
+                ? "bg-amber-950 border-amber-800/60 text-amber-400"
+                : "bg-emerald-950 border-emerald-800/60 text-emerald-400"
+            }`}
+            title={isWrongNetwork ? "Wrong network for this app" : undefined}
+          >
+            {networkName(networkPassphrase)}
           </span>
         </button>
 
@@ -81,6 +98,14 @@ export function WalletConnectButton({ className = "", onAddressSelect }: WalletB
                   {address}
                 </div>
               </div>
+
+              {isWrongNetwork && (
+                <div className="p-2 rounded-lg bg-amber-950/40 border border-amber-900/50 text-amber-300 text-[11px]">
+                  Freighter is on {networkName(networkPassphrase)}. Switch it to{" "}
+                  {networkName(APP_NETWORK_PASSPHRASE)} in Freighter's settings to
+                  sign transactions here.
+                </div>
+              )}
 
               <div className="flex items-center gap-2 pt-1 border-t border-neutral-800/80">
                 <button
