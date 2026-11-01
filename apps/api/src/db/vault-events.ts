@@ -1,5 +1,10 @@
 import type { VaultEvent } from "@workspace/sdk/chain"
-import { MongoBulkWriteError, type Collection, type Db } from "mongodb"
+import {
+  MongoBulkWriteError,
+  type Collection,
+  type Db,
+  type Filter,
+} from "mongodb"
 
 /**
  * Ledgers whose events the indexer could never read: the RPC had already dropped
@@ -31,8 +36,24 @@ export interface VaultEventStore {
    * saved (the same id from the same vault) are skipped, so saving twice is safe.
    */
   save(events: VaultEvent[]): Promise<void>
+  /** One vault's events, newest first, filtered and paged as `query` says. */
+  list(query: ActivityQuery): Promise<VaultEvent[]>
+  /** The events one transaction emitted on one vault, in order. */
+  byTx(contractId: string, txHash: string): Promise<VaultEvent[]>
   state(contractId: string): Promise<IndexerState | undefined>
   saveState(state: IndexerState): Promise<void>
+}
+
+/** Which of a vault's events to list. */
+export type ActivityQuery = {
+  contractId: string
+  batchId?: bigint
+  /** Only events with this funder or recipient: Stellar addresses, public on-chain. */
+  address?: string
+  type?: VaultEvent["type"]
+  /** Only events older than this event id, to page on from a previous list. */
+  before?: string
+  limit: number
 }
 
 // bigints (batch ids, field elements, amounts) are stored as decimal strings
@@ -86,6 +107,8 @@ export class MongoVaultEventStore implements VaultEventStore {
     await this.events.createIndex({ recipient: 1 }, { sparse: true })
     await this.events.createIndex({ funder: 1 }, { sparse: true })
     await this.events.createIndex({ txHash: 1 })
+    // Event ids are zero-padded and ordered like the events, so this pages newest first
+    await this.events.createIndex({ contractId: 1, eventId: -1 })
   }
 
   async save(events: VaultEvent[]): Promise<void> {
@@ -105,6 +128,30 @@ export class MongoVaultEventStore implements VaultEventStore {
         }))
       )
     }
+  }
+
+  async list(query: ActivityQuery): Promise<VaultEvent[]> {
+    const filter: Filter<EventDoc> = { contractId: query.contractId }
+    if (query.batchId !== undefined) filter.batchId = query.batchId.toString()
+    if (query.type) filter.type = query.type
+    if (query.before) filter.eventId = { $lt: query.before }
+    if (query.address) {
+      filter.$or = [{ funder: query.address }, { recipient: query.address }]
+    }
+    const docs = await this.events
+      .find(filter)
+      .sort({ eventId: -1 })
+      .limit(query.limit)
+      .toArray()
+    return docs.map(fromEventDoc)
+  }
+
+  async byTx(contractId: string, txHash: string): Promise<VaultEvent[]> {
+    const docs = await this.events
+      .find({ contractId, txHash })
+      .sort({ eventId: 1 })
+      .toArray()
+    return docs.map(fromEventDoc)
   }
 
   async state(contractId: string): Promise<IndexerState | undefined> {
@@ -144,6 +191,34 @@ function toEventDoc(event: VaultEvent): EventDoc {
         nullifier: event.nullifier.toString(),
         recipient: event.recipient,
         amount: event.amount.toString(),
+      }
+}
+
+function fromEventDoc(doc: EventDoc): VaultEvent {
+  const meta = {
+    id: doc.eventId,
+    contractId: doc.contractId,
+    ledger: doc.ledger,
+    // As the RPC writes it: whole seconds, without ".000"
+    ledgerClosedAt: doc.ledgerClosedAt.toISOString().replace(".000Z", "Z"),
+    txHash: doc.txHash,
+    batchId: BigInt(doc.batchId),
+  }
+  return doc.type === "funded"
+    ? {
+        ...meta,
+        type: "funded",
+        funder: doc.funder,
+        token: doc.token,
+        root: BigInt(doc.root),
+        total: BigInt(doc.total),
+      }
+    : {
+        ...meta,
+        type: "withdrawn",
+        nullifier: BigInt(doc.nullifier),
+        recipient: doc.recipient,
+        amount: BigInt(doc.amount),
       }
 }
 

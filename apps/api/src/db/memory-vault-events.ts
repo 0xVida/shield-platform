@@ -1,6 +1,10 @@
 import type { VaultEvent } from "@workspace/sdk/chain"
 
-import type { IndexerState, VaultEventStore } from "./vault-events"
+import type {
+  ActivityQuery,
+  IndexerState,
+  VaultEventStore,
+} from "./vault-events"
 
 /** VaultEventStore in memory, for tests. */
 export class MemoryVaultEventStore implements VaultEventStore {
@@ -20,6 +24,28 @@ export class MemoryVaultEventStore implements VaultEventStore {
         )
       }
     }
+  }
+
+  async list(query: ActivityQuery): Promise<VaultEvent[]> {
+    return [...this.events.values()]
+      .filter(
+        (event) =>
+          event.contractId === query.contractId &&
+          (query.batchId === undefined || event.batchId === query.batchId) &&
+          (query.type === undefined || event.type === query.type) &&
+          (query.before === undefined || event.id < query.before) &&
+          (query.address === undefined ||
+            (event.type === "funded" ? event.funder : event.recipient) ===
+              query.address)
+      )
+      .sort((a, b) => (a.id < b.id ? 1 : -1))
+      .slice(0, query.limit)
+  }
+
+  async byTx(contractId: string, txHash: string): Promise<VaultEvent[]> {
+    return [...this.events.values()]
+      .filter((e) => e.contractId === contractId && e.txHash === txHash)
+      .sort((a, b) => (a.id < b.id ? -1 : 1))
   }
 
   async state(contractId: string): Promise<IndexerState | undefined> {

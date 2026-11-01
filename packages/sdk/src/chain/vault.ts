@@ -64,6 +64,11 @@ export interface WithdrawParams {
 /** A simulated vault call, ready to be signed and sent. */
 export type VaultTransaction = AssembledTransaction<Result<void>>
 
+/** A transaction's outcome, as the RPC reports it. */
+export type TransactionOutcome =
+  | { status: "SUCCESS" | "FAILED"; ledger: number; ledgerClosedAt: string }
+  | { status: "NOT_FOUND" }
+
 /**
  * Typed access to the ShieldVault contract.
  *
@@ -158,6 +163,26 @@ export class ShieldVaultClient {
       cursor: response.cursor,
       latestLedger: response.latestLedger,
       oldestLedger: response.oldestLedger,
+    }
+  }
+
+  /**
+   * A transaction's outcome, per the RPC. NOT_FOUND covers everything not in a
+   * ledger the RPC keeps: still pending, never sent, expired, or older than about a
+   * week. The RPC can't tell these apart.
+   */
+  async getTransaction(hash: string): Promise<TransactionOutcome> {
+    const response = await this.server().getTransaction(hash)
+    if (response.status === rpc.Api.GetTransactionStatus.NOT_FOUND) {
+      return { status: "NOT_FOUND" }
+    }
+    return {
+      status: response.status,
+      ledger: response.ledger,
+      // Whole seconds, written like the RPC writes events' ledgerClosedAt
+      ledgerClosedAt: new Date(response.createdAt * 1000)
+        .toISOString()
+        .replace(".000Z", "Z"),
     }
   }
 
