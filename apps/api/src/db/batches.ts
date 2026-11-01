@@ -86,6 +86,11 @@ export interface BatchStore {
   list(limit: number, status?: BatchStatus): Promise<BatchRecord[]>
   /** A batch's allocations, in leaf order. */
   allocations(batchId: bigint): Promise<AllocationRecord[]>
+  /** Looks up one recipient's allocation in a batch. */
+  allocationByRecipient(
+    batchId: bigint,
+    recipient: string
+  ): Promise<AllocationRecord | undefined>
   /**
    * Moves a batch from status `from` to `to`, setting the given fields; `error` is
    * cleared unless given. Returns false, changing nothing, if the batch isn't in
@@ -229,6 +234,17 @@ export class MongoBatchStore implements BatchStore {
       .sort({ leafIndex: 1 })
       .toArray()
     return docs.map((doc) => ({ ...doc, batchId: BigInt(doc.batchId) }))
+  }
+
+  async allocationByRecipient(
+    batchId: bigint,
+    recipient: string
+  ): Promise<AllocationRecord | undefined> {
+    const doc = await this.allocationDocs.findOne(
+      { batchId: batchId.toString(), recipient },
+      { projection: { _id: 0 } }
+    )
+    return doc ? { ...doc, batchId: BigInt(doc.batchId) } : undefined
   }
 
   async setStatus(
