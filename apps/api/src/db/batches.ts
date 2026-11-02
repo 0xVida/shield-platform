@@ -65,6 +65,8 @@ export type AllocationRecord = {
   /** The disburser's reference for the recipient, e.g. an SDP receiver id. */
   recipient: string
   claim: Encrypted
+  /** Random, single-use bearer token for secure claim delivery. */
+  claimToken?: string
 }
 
 /** A recipient's claim data, decrypted (architecture flow, step 4). */
@@ -91,6 +93,8 @@ export interface BatchStore {
     batchId: bigint,
     recipient: string
   ): Promise<AllocationRecord | undefined>
+  /** Looks up an allocation by its unguessable claim token. */
+  allocationByToken(token: string): Promise<AllocationRecord | undefined>
   /**
    * Moves a batch from status `from` to `to`, setting the given fields; `error` is
    * cleared unless given. Returns false, changing nothing, if the batch isn't in
@@ -173,6 +177,10 @@ export class MongoBatchStore implements BatchStore {
       { unique: true }
     )
     await this.allocationDocs.createIndex({ recipient: 1 })
+    await this.allocationDocs.createIndex(
+      { claimToken: 1 },
+      { unique: true, sparse: true }
+    )
   }
 
   async create(
@@ -242,6 +250,16 @@ export class MongoBatchStore implements BatchStore {
   ): Promise<AllocationRecord | undefined> {
     const doc = await this.allocationDocs.findOne(
       { batchId: batchId.toString(), recipient },
+      { projection: { _id: 0 } }
+    )
+    return doc ? { ...doc, batchId: BigInt(doc.batchId) } : undefined
+  }
+
+  async allocationByToken(
+    token: string
+  ): Promise<AllocationRecord | undefined> {
+    const doc = await this.allocationDocs.findOne(
+      { claimToken: token },
       { projection: { _id: 0 } }
     )
     return doc ? { ...doc, batchId: BigInt(doc.batchId) } : undefined

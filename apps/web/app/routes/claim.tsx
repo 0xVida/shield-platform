@@ -50,10 +50,11 @@ const STEPS = [
 ]
 
 const input =
-  "w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500 transition-colors font-mono"
+  "w-full bg-white dark:bg-neutral-950 border border-neutral-300 dark:border-neutral-800 rounded-lg px-3 py-2 text-sm text-neutral-900 dark:text-white focus:outline-none focus:border-emerald-500 transition-colors font-mono"
 const primary =
-  "bg-emerald-500 hover:bg-emerald-400 text-neutral-950 font-semibold px-5 flex items-center gap-2 cursor-pointer disabled:opacity-50"
-const secondary = "border-neutral-800 text-neutral-300 hover:bg-neutral-800 cursor-pointer"
+  "bg-emerald-600 hover:bg-emerald-500 text-white font-semibold px-5 flex items-center gap-2 cursor-pointer disabled:opacity-50 shadow-xs"
+const secondary =
+  "border border-neutral-300 dark:border-neutral-800 text-neutral-700 dark:text-neutral-300 bg-white dark:bg-neutral-900/40 hover:bg-neutral-100 dark:hover:bg-neutral-800 cursor-pointer shadow-2xs"
 
 /** What a looked-up allocation allows: only a funded batch's unspent claim can be made. */
 function claimState(claim: PreparedClaim): { label: string; canClaim: boolean } {
@@ -67,8 +68,10 @@ export default function ClaimPage() {
   const { address: walletAddress, isConnected, signTransaction } = useWallet()
 
   // Finding the allocation
+  const [lookupToken, setLookupToken] = useState(searchParams.get("token") ?? "")
   const [lookupBatch, setLookupBatch] = useState(searchParams.get("batch") ?? "")
   const [lookupRecipient, setLookupRecipient] = useState(searchParams.get("recipient") ?? "")
+  const [useLegacyLookup, setUseLegacyLookup] = useState(!searchParams.get("token") && !!(searchParams.get("batch") || searchParams.get("recipient")))
   const [isLookingUp, setIsLookingUp] = useState(false)
   const [claim, setClaim] = useState<PreparedClaim | null>(null)
 
@@ -99,19 +102,24 @@ export default function ClaimPage() {
   }, [])
   const txLink = (hash: string) => explorerUrl(vault.networkPassphrase, "tx", hash)
 
-  // A claim link carries the batch and recipient: look the allocation up straight away
+  // A claim link carries a token or batch+recipient: look the allocation up straight away
   useEffect(() => {
+    const token = searchParams.get("token")
     const batch = searchParams.get("batch")
     const reference = searchParams.get("recipient")
-    if (batch && reference) void lookUp(batch, reference)
+    if (token) {
+      void lookUp({ token })
+    } else if (batch && reference) {
+      void lookUp({ batchId: batch, recipient: reference })
+    }
   }, [searchParams])
 
-  async function lookUp(batchId: string, reference: string) {
-    if (!batchId.trim() || !reference.trim()) return
+  async function lookUp(params: { token?: string; batchId?: string; recipient?: string }) {
+    if (!params.token?.trim() && (!params.batchId?.trim() || !params.recipient?.trim())) return
     setError(null)
     setIsLookingUp(true)
     try {
-      setClaim(await api.prepareClaim({ batchId: batchId.trim(), recipient: reference.trim() }))
+      setClaim(await api.prepareClaim(params))
     } catch (err) {
       setClaim(null)
       setError(err instanceof Error ? err.message : "Couldn't find this allocation")
@@ -239,15 +247,15 @@ export default function ClaimPage() {
   const state = claim && claimState(claim)
 
   return (
-    <div className="min-h-screen bg-neutral-950 text-neutral-100 antialiased selection:bg-emerald-500/30 selection:text-emerald-300">
+    <div className="min-h-screen bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 antialiased selection:bg-emerald-500/30 selection:text-emerald-300 transition-colors">
       <AppHeader />
 
       <main className="max-w-3xl mx-auto px-4 py-12">
         <div className="text-center mb-10">
-          <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-white mb-2">
+          <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-neutral-900 dark:text-white mb-2">
             Claim Your Allocation
           </h1>
-          <p className="text-neutral-400 text-sm max-w-lg mx-auto">
+          <p className="text-neutral-600 dark:text-neutral-400 text-sm max-w-lg mx-auto">
             Your browser proves you're owed this allocation without revealing which one
             it is. Only the amount and the payout address appear on-chain.
           </p>
@@ -255,7 +263,7 @@ export default function ClaimPage() {
 
         <StepIndicator steps={STEPS} current={step} onSelect={step < 4 ? setStep : undefined} />
 
-        <div className="bg-neutral-900/80 border border-neutral-800/80 rounded-2xl p-6 sm:p-8">
+        <div className="bg-white dark:bg-neutral-900/80 border border-neutral-200 dark:border-neutral-800/80 rounded-2xl p-6 sm:p-8 shadow-xs">
           {error && (
             <ErrorBox title="Something went wrong" className="mb-6">
               {error}
@@ -266,61 +274,105 @@ export default function ClaimPage() {
           {step === 1 && (
             <div className="space-y-6">
               <StepTitle title="1. Find your allocation">
-                Use the batch id and reference from your invitation.
+                Use your confidential claim token or your disbursement invitation.
               </StepTitle>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <Field label="Batch ID" htmlFor="batch">
-                  <input
-                    id="batch"
-                    value={lookupBatch}
-                    onChange={(e) => setLookupBatch(e.target.value)}
-                    className={input}
-                    placeholder="e.g. 1793579695998"
-                  />
-                </Field>
-                <Field label="Your reference (email, phone or SDP id)" htmlFor="reference">
-                  <input
-                    id="reference"
-                    value={lookupRecipient}
-                    onChange={(e) => setLookupRecipient(e.target.value)}
-                    className={input}
-                    placeholder="e.g. alice@example.com"
-                  />
-                </Field>
-              </div>
-
-              <div className="flex justify-end">
-                <Button
-                  variant="outline"
-                  disabled={isLookingUp || !lookupBatch.trim() || !lookupRecipient.trim()}
-                  onClick={() => lookUp(lookupBatch, lookupRecipient)}
-                  className={secondary}
-                >
-                  {isLookingUp ? (
-                    <ArrowsClockwise size={14} className="animate-spin" />
-                  ) : (
-                    <Receipt size={14} />
-                  )}
-                  Find Allocation
-                </Button>
-              </div>
+              {!useLegacyLookup ? (
+                <div className="space-y-3">
+                  <Field label="Claim Token (from your confidential claim link)" htmlFor="token">
+                    <input
+                      id="token"
+                      value={lookupToken}
+                      onChange={(e) => setLookupToken(e.target.value)}
+                      className={input}
+                      placeholder="Paste your private bearer token (e.g. from /claim?token=...)"
+                    />
+                  </Field>
+                  <div className="flex items-center justify-between pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setUseLegacyLookup(true)}
+                      className="text-xs text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300 underline cursor-pointer"
+                    >
+                      Or search by Batch ID and reference
+                    </button>
+                    <Button
+                      variant="outline"
+                      disabled={isLookingUp || !lookupToken.trim()}
+                      onClick={() => lookUp({ token: lookupToken.trim() })}
+                      className={secondary}
+                    >
+                      {isLookingUp ? (
+                        <ArrowsClockwise size={14} className="animate-spin" />
+                      ) : (
+                        <Receipt size={14} />
+                      )}
+                      Find Allocation
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <Field label="Batch ID" htmlFor="batch">
+                      <input
+                        id="batch"
+                        value={lookupBatch}
+                        onChange={(e) => setLookupBatch(e.target.value)}
+                        className={input}
+                        placeholder="e.g. 1793579695998"
+                      />
+                    </Field>
+                    <Field label="Your reference (email, phone or SDP id)" htmlFor="reference">
+                      <input
+                        id="reference"
+                        value={lookupRecipient}
+                        onChange={(e) => setLookupRecipient(e.target.value)}
+                        className={input}
+                        placeholder="e.g. alice@example.com"
+                      />
+                    </Field>
+                  </div>
+                  <div className="flex items-center justify-between pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setUseLegacyLookup(false)}
+                      className="text-xs text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300 underline cursor-pointer"
+                    >
+                      Use single-use claim token instead
+                    </button>
+                    <Button
+                      variant="outline"
+                      disabled={isLookingUp || !lookupBatch.trim() || !lookupRecipient.trim()}
+                      onClick={() => lookUp({ batchId: lookupBatch.trim(), recipient: lookupRecipient.trim() })}
+                      className={secondary}
+                    >
+                      {isLookingUp ? (
+                        <ArrowsClockwise size={14} className="animate-spin" />
+                      ) : (
+                        <Receipt size={14} />
+                      )}
+                      Find Allocation
+                    </Button>
+                  </div>
+                </div>
+              )}
 
               {claim && state && (
-                <div className="p-4 rounded-xl bg-neutral-950/60 border border-neutral-800 grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
+                <div className="p-4 rounded-xl bg-neutral-50 dark:bg-neutral-950/60 border border-neutral-200 dark:border-neutral-800 grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs shadow-2xs">
                   <div>
-                    <span className="text-neutral-500 block text-[11px]">Your allocation</span>
-                    <span className="text-base font-bold text-emerald-400 font-mono">
+                    <span className="text-neutral-500 dark:text-neutral-400 block text-[11px]">Your allocation</span>
+                    <span className="text-base font-bold text-emerald-600 dark:text-emerald-400 font-mono">
                       {formatAmount(BigInt(claim.amount))} tokens
                     </span>
                   </div>
                   <div>
-                    <span className="text-neutral-500 block text-[11px]">Batch</span>
-                    <span className="font-mono text-neutral-300">#{claim.batchId}</span>
+                    <span className="text-neutral-500 dark:text-neutral-400 block text-[11px]">Batch</span>
+                    <span className="font-mono text-neutral-800 dark:text-neutral-300">#{claim.batchId}</span>
                   </div>
                   <div>
-                    <span className="text-neutral-500 block text-[11px]">Status</span>
-                    <span className={state.canClaim ? "text-emerald-400" : "text-amber-300"}>
+                    <span className="text-neutral-500 dark:text-neutral-400 block text-[11px]">Status</span>
+                    <span className={state.canClaim ? "text-emerald-600 dark:text-emerald-400 font-semibold" : "text-amber-600 dark:text-amber-300"}>
                       {state.label}
                     </span>
                   </div>
@@ -345,7 +397,7 @@ export default function ClaimPage() {
               </StepTitle>
 
               {!isConnected && (
-                <div className="flex items-center justify-between gap-3 p-3.5 rounded-xl bg-neutral-950/80 border border-neutral-800 text-xs text-neutral-400">
+                <div className="flex items-center justify-between gap-3 p-3.5 rounded-xl bg-neutral-50 dark:bg-neutral-950/80 border border-neutral-200 dark:border-neutral-800 text-xs text-neutral-600 dark:text-neutral-400 shadow-2xs">
                   Connect Freighter to pay out to your wallet. You'll also need it to sign
                   the claim.
                   <WalletConnectButton />
@@ -361,14 +413,14 @@ export default function ClaimPage() {
                   placeholder="G..."
                 />
                 {isConnected && recipient === walletAddress && (
-                  <span className="mt-1 text-[11px] text-emerald-400 flex items-center gap-1">
+                  <span className="mt-1 text-[11px] text-emerald-600 dark:text-emerald-400 flex items-center gap-1 font-medium">
                     <Check size={12} /> Your connected wallet
                   </span>
                 )}
               </Field>
 
               {provingStage && (
-                <div className="p-3 rounded-lg bg-emerald-950/20 border border-emerald-900/40 text-emerald-400 text-xs flex items-center gap-2 animate-pulse">
+                <div className="p-3 rounded-lg bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900/40 text-emerald-700 dark:text-emerald-400 text-xs flex items-center gap-2 animate-pulse">
                   <Cpu size={15} />
                   {provingStage}
                 </div>
@@ -401,16 +453,16 @@ export default function ClaimPage() {
                 The proof is ready. Review the claim, then sign it with your wallet.
               </StepTitle>
 
-              <div className="p-4 rounded-xl bg-neutral-950/60 border border-neutral-800 grid grid-cols-2 gap-3 text-xs">
+              <div className="p-4 rounded-xl bg-neutral-50 dark:bg-neutral-950/60 border border-neutral-200 dark:border-neutral-800 grid grid-cols-2 gap-3 text-xs shadow-2xs">
                 <div>
-                  <span className="text-neutral-500 block text-[11px]">Payout</span>
-                  <span className="font-mono font-semibold text-emerald-400">
+                  <span className="text-neutral-500 dark:text-neutral-400 block text-[11px]">Payout</span>
+                  <span className="font-mono font-semibold text-emerald-600 dark:text-emerald-400">
                     {formatAmount(BigInt(claim.amount))} tokens
                   </span>
                 </div>
                 <div>
-                  <span className="text-neutral-500 block text-[11px]">To</span>
-                  <span className="font-mono text-neutral-300" title={recipient}>
+                  <span className="text-neutral-500 dark:text-neutral-400 block text-[11px]">To</span>
+                  <span className="font-mono text-neutral-800 dark:text-neutral-300" title={recipient}>
                     {shortAddress(recipient)}
                   </span>
                 </div>
@@ -462,12 +514,12 @@ export default function ClaimPage() {
           {/* STEP 4: PAID */}
           {step === 4 && claim && (
             <div className="space-y-6 text-center py-6">
-              <div className="w-16 h-16 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl flex items-center justify-center text-emerald-400 mx-auto">
+              <div className="w-16 h-16 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl flex items-center justify-center text-emerald-600 dark:text-emerald-400 mx-auto">
                 <CheckCircle size={36} weight="duotone" />
               </div>
               <div>
-                <h2 className="text-xl font-bold text-white mb-1">Claimed</h2>
-                <p className="text-xs text-neutral-400">
+                <h2 className="text-xl font-bold text-neutral-900 dark:text-white mb-1">Claimed</h2>
+                <p className="text-xs text-neutral-600 dark:text-neutral-400">
                   {formatAmount(BigInt(claim.amount))} tokens were paid to{" "}
                   <span className="font-mono" title={recipient}>
                     {shortAddress(recipient)}
@@ -484,7 +536,7 @@ export default function ClaimPage() {
                     href={txLink(txHash)}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="bg-emerald-500 hover:bg-emerald-400 text-neutral-950 font-semibold px-4 py-2 rounded-lg text-sm inline-flex items-center gap-1.5 transition-colors"
+                    className="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold px-4 py-2 rounded-lg text-sm inline-flex items-center gap-1.5 transition-colors shadow-xs"
                   >
                     View on Stellar Expert
                     <ArrowSquareOut size={14} />
@@ -501,9 +553,9 @@ export default function ClaimPage() {
 
 function StepTitle({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="pb-4 border-b border-neutral-800">
-      <h2 className="text-base font-semibold text-white">{title}</h2>
-      <p className="text-xs text-neutral-400">{children}</p>
+    <div className="pb-4 border-b border-neutral-200 dark:border-neutral-800">
+      <h2 className="text-base font-semibold text-neutral-900 dark:text-white">{title}</h2>
+      <p className="text-xs text-neutral-500 dark:text-neutral-400">{children}</p>
     </div>
   )
 }
@@ -519,7 +571,7 @@ function Field({
 }) {
   return (
     <div>
-      <label htmlFor={htmlFor} className="block text-xs font-medium text-neutral-300 mb-1.5">
+      <label htmlFor={htmlFor} className="block text-xs font-medium text-neutral-700 dark:text-neutral-300 mb-1.5">
         {label}
       </label>
       {children}

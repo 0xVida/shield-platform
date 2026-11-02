@@ -138,7 +138,7 @@ export default function BatchPage({ loaderData }: Route.ComponentProps) {
 
       <div className="space-y-6">
         <Summary batch={batch} />
-        <div className="bg-neutral-900/80 border border-neutral-800/80 rounded-2xl p-6 sm:p-8">
+        <div className="bg-white dark:bg-neutral-900/80 border border-neutral-200 dark:border-neutral-800/80 rounded-2xl p-6 sm:p-8 shadow-xs">
           <div>
             {(batch.status === "created" || batch.status === "failed") && (
               <ProveStep batch={batch} />
@@ -155,12 +155,12 @@ export default function BatchPage({ loaderData }: Route.ComponentProps) {
 
 function Shell({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen bg-neutral-950 text-neutral-100 antialiased selection:bg-emerald-500/30 selection:text-emerald-300">
+    <div className="min-h-screen bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 antialiased selection:bg-emerald-500/30 selection:text-emerald-300 transition-colors">
       <AppHeader />
       <main className="max-w-3xl mx-auto px-4 py-12">
         <Link
           to="/batches"
-          className="inline-flex items-center gap-1.5 text-xs text-neutral-400 hover:text-white transition-colors mb-6"
+          className="inline-flex items-center gap-1.5 text-xs text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white transition-colors mb-6"
         >
           <ArrowLeft size={14} />
           Batches
@@ -184,19 +184,19 @@ function StepTitle({ title, children }: { title: string; children: React.ReactNo
 function Summary({ batch }: { batch: Batch }) {
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
-      <div className="p-3 bg-neutral-900/60 rounded-xl border border-neutral-800">
-        <span className="text-neutral-500 block text-[11px]">Total (public)</span>
-        <span className="font-mono font-semibold text-emerald-400">
+      <div className="p-3 bg-white dark:bg-neutral-900/60 rounded-xl border border-neutral-200 dark:border-neutral-800 shadow-2xs">
+        <span className="text-neutral-500 dark:text-neutral-400 block text-[11px]">Total (public)</span>
+        <span className="font-mono font-semibold text-emerald-600 dark:text-emerald-400">
           {formatAmount(BigInt(batch.total))} tokens
         </span>
       </div>
-      <div className="p-3 bg-neutral-900/60 rounded-xl border border-neutral-800">
-        <span className="text-neutral-500 block text-[11px]">Recipients</span>
-        <span className="font-mono font-medium text-white">{batch.recipientCount}</span>
+      <div className="p-3 bg-white dark:bg-neutral-900/60 rounded-xl border border-neutral-200 dark:border-neutral-800 shadow-2xs">
+        <span className="text-neutral-500 dark:text-neutral-400 block text-[11px]">Recipients</span>
+        <span className="font-mono font-medium text-neutral-900 dark:text-white">{batch.recipientCount}</span>
       </div>
-      <div className="p-3 bg-neutral-900/60 rounded-xl border border-neutral-800 col-span-2 sm:col-span-1">
-        <span className="text-neutral-500 block text-[11px]">Merkle Root</span>
-        <span className="font-mono font-medium text-white truncate block" title={batch.root}>
+      <div className="p-3 bg-white dark:bg-neutral-900/60 rounded-xl border border-neutral-200 dark:border-neutral-800 col-span-2 sm:col-span-1 shadow-2xs">
+        <span className="text-neutral-500 dark:text-neutral-400 block text-[11px]">Merkle Root</span>
+        <span className="font-mono font-medium text-neutral-900 dark:text-white truncate block" title={batch.root}>
           {batch.root.slice(0, 10)}...{batch.root.slice(-6)}
         </span>
       </div>
@@ -569,18 +569,18 @@ function FundedStep({ batch, vault }: { batch: Batch; vault: VaultConnection | n
         ) : claimsList.length === 0 ? (
           <p className="text-xs text-neutral-500 py-2">No individual recipient links available for this batch.</p>
         ) : (
-          <div className="border border-neutral-800 rounded-xl overflow-hidden divide-y divide-neutral-800/60 bg-neutral-950/60 max-h-60 overflow-y-auto">
+          <div className="border border-neutral-200 dark:border-neutral-800 rounded-xl overflow-hidden divide-y divide-neutral-200 dark:divide-neutral-800/60 bg-white dark:bg-neutral-950/60 max-h-60 overflow-y-auto shadow-2xs">
             {claimsList.map((item, idx) => (
               <div key={idx} className="p-3 flex items-center justify-between gap-4 text-xs">
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
-                    <span className="font-mono text-neutral-200 truncate">{item.recipient}</span>
-                    <span className="text-[10px] bg-neutral-800 text-neutral-400 px-1.5 py-0.5 rounded font-mono">
-                      #{item.leafIndex}
+                    <span className="font-mono text-neutral-900 dark:text-neutral-200 truncate">{item.recipient}</span>
+                    <span className="text-[10px] bg-emerald-100 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-800/40 text-emerald-800 dark:text-emerald-400 px-1.5 py-0.5 rounded font-medium">
+                      Confidential Link
                     </span>
                   </div>
-                  <div className="text-[11px] text-emerald-400 font-mono mt-0.5">
-                    {formatAmount(BigInt(item.amount))} tokens
+                  <div className="text-[11px] text-neutral-500 font-mono mt-0.5 truncate">
+                    Private single-use claim link
                   </div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
@@ -588,11 +588,11 @@ function FundedStep({ batch, vault }: { batch: Batch; vault: VaultConnection | n
                     variant="outline"
                     size="sm"
                     onClick={() => copyClaimLink(item.claimUrl, idx)}
-                    className="h-7 text-xs border-neutral-800 text-neutral-300 hover:bg-neutral-800 flex items-center gap-1.5 cursor-pointer"
+                    className="h-7 text-xs border border-neutral-200 dark:border-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 flex items-center gap-1.5 cursor-pointer shadow-2xs"
                   >
                     {copiedIndex === idx ? (
                       <>
-                        <Check size={12} className="text-emerald-400" />
+                        <Check size={12} className="text-emerald-600 dark:text-emerald-400" />
                         Copied
                       </>
                     ) : (
@@ -605,7 +605,7 @@ function FundedStep({ batch, vault }: { batch: Batch; vault: VaultConnection | n
                   <Link
                     to={item.claimUrl}
                     target="_blank"
-                    className="h-7 px-2.5 text-xs bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-lg inline-flex items-center gap-1 font-medium transition-colors"
+                    className="h-7 px-2.5 text-xs bg-emerald-50 dark:bg-emerald-500/10 hover:bg-emerald-100 dark:hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 border border-emerald-300 dark:border-emerald-500/30 rounded-lg inline-flex items-center gap-1 font-medium transition-colors shadow-2xs"
                   >
                     Open
                     <ArrowSquareOut size={12} />

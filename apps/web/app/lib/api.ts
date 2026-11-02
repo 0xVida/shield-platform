@@ -100,21 +100,44 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(API_URL + path, {
-    ...init,
-    headers: { "content-type": "application/json", ...init?.headers },
-  })
-  const body = await res.json().catch(() => undefined)
-  if (!res.ok) {
-    const error = body?.error
+  let timer: any
+  let signal = init?.signal
+  if (!signal && typeof AbortSignal !== "undefined" && "timeout" in AbortSignal) {
+    signal = AbortSignal.timeout(5000)
+  }
+
+  try {
+    const res = await fetch(API_URL + path, {
+      ...init,
+      signal,
+      headers: { "content-type": "application/json", ...init?.headers },
+    })
+    const body = await res.json().catch(() => undefined)
+    if (!res.ok) {
+      const error = body?.error
+      throw new ApiError(
+        res.status,
+        error?.code ?? "error",
+        error?.message ?? res.statusText,
+        error?.details
+      )
+    }
+    return body as T
+  } catch (err: any) {
+    if (err instanceof ApiError) throw err
+    if (err?.name === "TimeoutError" || err?.name === "AbortError") {
+      throw new ApiError(
+        504,
+        "TIMEOUT",
+        `API request to ${path} timed out. Ensure the backend server is running on ${API_URL}.`
+      )
+    }
     throw new ApiError(
-      res.status,
-      error?.code ?? "error",
-      error?.message ?? res.statusText,
-      error?.details
+      503,
+      "NETWORK_ERROR",
+      `Could not reach API server at ${API_URL}. Is the backend running?`
     )
   }
-  return body as T
 }
 
 export const api = {
@@ -169,7 +192,12 @@ export const api = {
     return request<ActivityPage>(`/v1/activity${search}`)
   },
 
-  prepareClaim: (body: { batchId: string; recipient: string; payoutAddress?: string }) =>
+  prepareClaim: (body: {
+    token?: string
+    batchId?: string
+    recipient?: string
+    payoutAddress?: string
+  }) =>
     request<PreparedClaim>("/v1/claims/prepare", {
       method: "POST",
       body: JSON.stringify(body),
@@ -211,9 +239,6 @@ export type PreparedClaim = {
 
 export type BatchClaimExport = {
   recipient: string
-  leafIndex: number
-  amount: string
-  nullifierHash: string
   claimUrl: string
 }
 

@@ -27,12 +27,12 @@ export function StepIndicator({
           <li
             key={title}
             onClick={canGoBack ? () => onSelect(num) : undefined}
-            className={`p-3 rounded-xl border text-center transition-colors ${
+            className={`p-3 rounded-xl border text-center transition-colors shadow-2xs ${
               isDone
-                ? `bg-neutral-900/60 border-emerald-500/40 text-emerald-400 ${canGoBack ? "cursor-pointer" : ""}`
+                ? `bg-emerald-50 dark:bg-neutral-900/60 border-emerald-300 dark:border-emerald-500/40 text-emerald-800 dark:text-emerald-400 ${canGoBack ? "cursor-pointer" : ""}`
                 : isActive
-                  ? "bg-neutral-900 border-emerald-500 text-white"
-                  : "bg-neutral-900/20 border-neutral-800/60 text-neutral-500"
+                  ? "bg-white dark:bg-neutral-900 border-emerald-600 dark:border-emerald-500 text-neutral-950 dark:text-white shadow-xs"
+                  : "bg-white/40 dark:bg-neutral-900/20 border-neutral-200 dark:border-neutral-800/60 text-neutral-400 dark:text-neutral-500"
             }`}
           >
             <div className="flex items-center justify-center gap-1.5 mb-1">

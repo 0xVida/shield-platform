@@ -32,11 +32,17 @@ const CheckClaimSchema = z.object({
   recipient: z.string().min(50).max(60).optional(),
 })
 
-const PrepareClaimSchema = z.object({
-  batchId: z.coerce.bigint(),
-  recipient: z.string().trim().min(1).max(256),
-  payoutAddress: z.string().min(50).max(60).optional(),
-})
+const PrepareClaimSchema = z
+  .object({
+    token: z.string().trim().min(16).max(128).optional(),
+    batchId: z.coerce.bigint().optional(),
+    recipient: z.string().trim().min(1).max(256).optional(),
+    payoutAddress: z.string().min(50).max(60).optional(),
+  })
+  .refine(
+    (data) => Boolean(data.token || (data.batchId !== undefined && data.recipient !== undefined)),
+    "Either 'token' or both 'batchId' and 'recipient' must be provided"
+  )
 
 export function claimRouter(depsOrVault?: ClaimRouterDeps | ShieldVaultClient): Router {
   const router = Router()
@@ -114,7 +120,7 @@ export function claimRouter(depsOrVault?: ClaimRouterDeps | ShieldVaultClient): 
   router.post(
     "/v1/claims/prepare",
     validated({ body: PrepareClaimSchema }, async ({ body }, _req, res) => {
-      const { batchId, recipient, payoutAddress } = body
+      const { token, payoutAddress } = body
 
       if (!store || !claimDataKey) {
         throw new HttpError(
@@ -124,19 +130,39 @@ export function claimRouter(depsOrVault?: ClaimRouterDeps | ShieldVaultClient): 
         )
       }
 
-      const batch = await store.get(batchId)
-      if (!batch) {
-        throw new HttpError(404, "BATCH_NOT_FOUND", `Batch ${batchId} was not found`)
+      let allocation
+      let batch
+      if (token) {
+        allocation = await store.allocationByToken(token)
+        if (!allocation) {
+          throw new HttpError(
+            404,
+            "ALLOCATION_NOT_FOUND",
+            "Invalid or expired claim token"
+          )
+        }
+        batch = await store.get(allocation.batchId)
+        if (!batch) {
+          throw new HttpError(404, "BATCH_NOT_FOUND", `Batch ${allocation.batchId} was not found`)
+        }
+      } else {
+        const batchId = body.batchId!
+        const recipient = body.recipient!
+        batch = await store.get(batchId)
+        if (!batch) {
+          throw new HttpError(404, "BATCH_NOT_FOUND", `Batch ${batchId} was not found`)
+        }
+        allocation = await store.allocationByRecipient(batchId, recipient)
+        if (!allocation) {
+          throw new HttpError(
+            404,
+            "ALLOCATION_NOT_FOUND",
+            `No allocation found for recipient '${recipient}' in batch ${batchId}`
+          )
+        }
       }
 
-      const allocation = await store.allocationByRecipient(batchId, recipient)
-      if (!allocation) {
-        throw new HttpError(
-          404,
-          "ALLOCATION_NOT_FOUND",
-          `No allocation found for recipient '${recipient}' in batch ${batchId}`
-        )
-      }
+      const batchId = allocation.batchId
 
       // Decrypt stored allocation claim credentials
       const claim = openClaim(claimDataKey, allocation)
@@ -166,7 +192,7 @@ export function claimRouter(depsOrVault?: ClaimRouterDeps | ShieldVaultClient): 
 
       res.json({
         batchId: batchId.toString(),
-        recipient,
+        recipient: allocation.recipient,
         leafIndex: claim.leafIndex,
         amount: claim.amount.toString(),
         secret: claim.secret.toString(),
@@ -187,15 +213,16 @@ export function claimRouter(depsOrVault?: ClaimRouterDeps | ShieldVaultClient): 
   )
 
   /**
-   * Secure delivery of claim credentials for an entire batch (SDP disbursement export).
+   * Secure delivery of claim links for an entire batch (SDP disbursement export).
+   * Stripped of leaf indexes, amounts, and nullifiers to prevent deanonymization.
    */
   router.get(
     "/v1/batches/:batchId/claims",
     async (req, res, next) => {
       try {
         const batchId = BigInt(req.params.batchId)
-        if (!store || !claimDataKey) {
-          throw new HttpError(503, "STORAGE_UNAVAILABLE", "Claim data is not configured")
+        if (!store) {
+          throw new HttpError(503, "STORAGE_UNAVAILABLE", "Batch store is not configured")
         }
 
         const batch = await store.get(batchId)
@@ -204,17 +231,12 @@ export function claimRouter(depsOrVault?: ClaimRouterDeps | ShieldVaultClient): 
         }
 
         const allocations = await store.allocations(batchId)
-        const claims = allocations.map((alloc) => {
-          const claim = openClaim(claimDataKey!, alloc)
-          const nullifier = computeNullifier(claim.secret, claim.leafIndex)
-          return {
-            recipient: alloc.recipient,
-            leafIndex: claim.leafIndex,
-            amount: claim.amount.toString(),
-            nullifierHash: "0x" + nullifier.toString(16).padStart(64, "0"),
-            claimUrl: `/claim?batch=${batchId}&recipient=${encodeURIComponent(alloc.recipient)}`,
-          }
-        })
+        const claims = allocations.map((alloc) => ({
+          recipient: alloc.recipient,
+          claimUrl: alloc.claimToken
+            ? `/claim?token=${alloc.claimToken}`
+            : `/claim?batch=${batchId}&recipient=${encodeURIComponent(alloc.recipient)}`,
+        }))
 
         res.json({
           batchId: batchId.toString(),

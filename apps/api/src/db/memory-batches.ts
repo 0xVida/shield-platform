@@ -48,6 +48,16 @@ export class MemoryBatchStore implements BatchStore {
       ?.find((a) => a.recipient === recipient)
   }
 
+  async allocationByToken(
+    token: string
+  ): Promise<AllocationRecord | undefined> {
+    for (const allocs of this.allocationsByBatch.values()) {
+      const match = allocs.find((a) => a.claimToken === token)
+      if (match) return match
+    }
+    return undefined
+  }
+
   async setStatus(
     batchId: bigint,
     from: BatchStatus,

@@ -48,11 +48,14 @@ export async function clientLoader({ request }: Route.ClientLoaderArgs) {
 
 export function HydrateFallback() {
   return (
-    <div className="min-h-screen bg-neutral-950 text-neutral-100 antialiased">
+    <div className="min-h-screen bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 antialiased transition-colors">
       <AppHeader />
-      <p className="mx-auto max-w-3xl px-4 py-12 text-xs text-neutral-400">
-        Loading activity...
-      </p>
+      <div className="max-w-3xl mx-auto px-4 py-16 text-center">
+        <div className="inline-flex items-center gap-2.5 text-xs text-neutral-600 dark:text-neutral-400 py-3 px-4 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900/50 shadow-xs">
+          <ArrowsClockwise size={16} className="animate-spin text-emerald-500" />
+          Loading vault activity...
+        </div>
+      </div>
     </div>
   )
 }
@@ -111,19 +114,19 @@ export default function Activity({ loaderData }: Route.ComponentProps) {
   const onlyMine = !!walletAddress && filters.address === walletAddress
 
   return (
-    <div className="min-h-screen bg-neutral-950 text-neutral-100 antialiased selection:bg-emerald-500/30 selection:text-emerald-300">
+    <div className="min-h-screen bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 antialiased selection:bg-emerald-500/30 selection:text-emerald-300 transition-colors">
       <AppHeader />
 
       <main className="mx-auto max-w-3xl px-4 py-12">
         <div className="mb-10 text-center">
-          <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-neutral-800 bg-neutral-900 px-3 py-1 text-xs font-medium text-neutral-300">
-            <ClockCounterClockwise size={14} className="text-emerald-400" />
+          <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 px-3 py-1 text-xs font-medium text-neutral-700 dark:text-neutral-300 shadow-xs">
+            <ClockCounterClockwise size={14} className="text-emerald-600 dark:text-emerald-400" />
             On-chain History
           </div>
-          <h1 className="mb-2 text-3xl font-bold tracking-tight text-white sm:text-4xl">
+          <h1 className="mb-2 text-3xl font-bold tracking-tight text-neutral-900 dark:text-white sm:text-4xl">
             Vault Activity
           </h1>
-          <p className="mx-auto max-w-lg text-sm text-neutral-400">
+          <p className="mx-auto max-w-lg text-sm text-neutral-600 dark:text-neutral-400">
             Every batch funded and every claim paid, as the vault recorded them.
             Only what's public on-chain: nothing here says which allocation a
             claim was.
@@ -181,21 +184,21 @@ export default function Activity({ loaderData }: Route.ComponentProps) {
         {error ? (
           <ErrorBox title="Couldn't load activity">{error}</ErrorBox>
         ) : items.length === 0 ? (
-          <div className="rounded-2xl border border-neutral-800/80 bg-neutral-900/80 p-10 text-center">
-            <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl border border-emerald-500/30 bg-emerald-500/10 text-emerald-400">
+          <div className="rounded-2xl border border-neutral-200 dark:border-neutral-800/80 bg-white dark:bg-neutral-900/80 p-10 text-center shadow-xs">
+            <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl border border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
               <ClockCounterClockwise size={24} weight="duotone" />
             </div>
-            <p className="mb-1 text-sm font-semibold text-white">
+            <p className="mb-1 text-sm font-semibold text-neutral-900 dark:text-white">
               No activity yet
             </p>
-            <p className="text-xs text-neutral-400">
+            <p className="text-xs text-neutral-500 dark:text-neutral-400">
               {filters.type || filters.address
                 ? "Nothing matches these filters."
                 : "Funded batches and paid claims will show up here."}
             </p>
           </div>
         ) : (
-          <ul className="divide-y divide-neutral-800/80 overflow-hidden rounded-2xl border border-neutral-800/80 bg-neutral-900/80">
+          <ul className="divide-y divide-neutral-100 dark:divide-neutral-800/80 overflow-hidden rounded-2xl border border-neutral-200 dark:border-neutral-800/80 bg-white dark:bg-neutral-900/80 shadow-xs">
             {items.map((item) => {
               const row = activityRow(item)
               const href = explorerUrl(network, "tx", row.txHash)
@@ -280,10 +283,10 @@ function FilterLink({
   return (
     <Link
       to={to}
-      className={`rounded-md border px-2.5 py-1 text-xs transition-colors ${
+      className={`rounded-md border px-2.5 py-1 text-xs transition-colors shadow-2xs ${
         active
-          ? "border-emerald-800/60 bg-emerald-950/40 text-emerald-300"
-          : "border-neutral-800 bg-neutral-900/40 text-neutral-400 hover:text-white"
+          ? "border-emerald-300 dark:border-emerald-800/60 bg-emerald-100 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-300 font-semibold"
+          : "border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900/40 text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white hover:border-neutral-300"
       }`}
     >
       {children}

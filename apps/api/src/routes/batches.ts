@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto"
 import { StrKey } from "@stellar/stellar-sdk"
 import {
   MAX_ALLOCATIONS,
@@ -143,6 +144,7 @@ export function batchesRouter({
               leafIndex: claim.leafIndex,
               recipient: body.allocations[claim.leafIndex]!.recipient,
               claim: sealClaim(claimDataKey, batchId, claim),
+              claimToken: randomBytes(32).toString("hex"),
             }))
           )
           res.status(201).json(summary(record))
