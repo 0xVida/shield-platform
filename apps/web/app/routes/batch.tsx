@@ -11,13 +11,14 @@ import {
   Coins,
   ListChecks,
   Stack,
-  WarningCircle,
 } from "@phosphor-icons/react"
 import { Button } from "@workspace/ui/components/button"
 
 import type { Route } from "./+types/batch"
 import { BatchStatusPill } from "../components/batch-status"
-import { DisburseHeader } from "../components/disburse-header"
+import { AppHeader } from "../components/app-header"
+import { ErrorBox } from "../components/error-box"
+import { StepIndicator } from "../components/step-indicator"
 import { useWallet } from "../context/wallet-context"
 import { WalletConnectButton } from "../components/wallet-button"
 import type { VaultTransaction } from "@workspace/sdk/chain"
@@ -78,6 +79,13 @@ function txHref(vault: VaultConnection | null, hash: string): string | undefined
   return explorerUrl(vault?.networkPassphrase ?? APP_NETWORK_PASSPHRASE, "tx", hash)
 }
 
+const STEPS = [
+  { title: "Created", icon: Stack },
+  { title: "Conservation Proof", icon: Cpu },
+  { title: "Fund Vault", icon: Coins },
+  { title: "Claims", icon: ListChecks },
+]
+
 const primary =
   "bg-emerald-500 hover:bg-emerald-400 text-neutral-950 font-semibold px-5 flex items-center gap-2 cursor-pointer disabled:opacity-50"
 
@@ -104,7 +112,7 @@ export default function BatchPage({ loaderData }: Route.ComponentProps) {
   if (!batch) {
     return (
       <Shell>
-        <ErrorBox title="Couldn't load this batch">{error}</ErrorBox>
+        <ErrorBox className="mb-6" title="Couldn't load this batch">{error}</ErrorBox>
       </Shell>
     )
   }
@@ -126,45 +134,12 @@ export default function BatchPage({ loaderData }: Route.ComponentProps) {
         </div>
       </div>
 
-      {/* Step Indicator */}
-      <div className="grid grid-cols-4 gap-2 mb-8">
-        {[
-          { num: 1, title: "Created", icon: Stack },
-          { num: 2, title: "Conservation Proof", icon: Cpu },
-          { num: 3, title: "Fund Vault", icon: Coins },
-          { num: 4, title: "Claims", icon: ListChecks },
-        ].map((s) => {
-          const Icon = s.icon
-          const isActive = step === s.num
-          const isCompleted = step > s.num
-          return (
-            <div
-              key={s.num}
-              className={`p-3 rounded-xl border text-center transition-all ${
-                isCompleted
-                  ? "bg-neutral-900/60 border-emerald-500/40 text-emerald-400"
-                  : isActive
-                    ? "bg-neutral-900 border-emerald-500 text-white shadow-lg shadow-emerald-950/40"
-                    : "bg-neutral-900/20 border-neutral-800/60 text-neutral-500"
-              }`}
-            >
-              <div className="flex items-center justify-center gap-1.5 mb-1">
-                <Icon size={16} weight={isActive ? "duotone" : "regular"} />
-                <span className="text-xs font-medium">Step {s.num}</span>
-              </div>
-              <div className="text-[11px] font-medium tracking-tight truncate">
-                {s.title}
-              </div>
-            </div>
-          )
-        })}
-      </div>
+      <StepIndicator steps={STEPS} current={step} />
 
       <div className="space-y-6">
         <Summary batch={batch} />
-        <div className="bg-neutral-900/80 border border-neutral-800/80 rounded-2xl p-6 sm:p-8 backdrop-blur-xl shadow-2xl relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-72 h-72 bg-emerald-500/5 rounded-full blur-3xl pointer-events-none" />
-          <div className="relative">
+        <div className="bg-neutral-900/80 border border-neutral-800/80 rounded-2xl p-6 sm:p-8">
+          <div>
             {(batch.status === "created" || batch.status === "failed") && (
               <ProveStep batch={batch} />
             )}
@@ -181,7 +156,7 @@ export default function BatchPage({ loaderData }: Route.ComponentProps) {
 function Shell({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-100 antialiased selection:bg-emerald-500/30 selection:text-emerald-300">
-      <DisburseHeader />
+      <AppHeader />
       <main className="max-w-3xl mx-auto px-4 py-12">
         <Link
           to="/batches"
@@ -192,18 +167,6 @@ function Shell({ children }: { children: React.ReactNode }) {
         </Link>
         {children}
       </main>
-    </div>
-  )
-}
-
-function ErrorBox({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div className="mb-6 p-4 rounded-xl bg-red-950/40 border border-red-800/60 text-red-300 text-xs flex items-start gap-3">
-      <WarningCircle size={18} className="shrink-0 mt-0.5 text-red-400" />
-      <div className="min-w-0 break-words">
-        <span className="font-semibold block mb-0.5">{title}</span>
-        {children}
-      </div>
     </div>
   )
 }
@@ -252,9 +215,9 @@ function ProveStep({ batch }: { batch: Batch }) {
         The vault only accepts the deposit with this proof.
       </StepTitle>
       {batch.status === "failed" && (
-        <ErrorBox title="The last attempt failed">{batch.error}</ErrorBox>
+        <ErrorBox className="mb-6" title="The last attempt failed">{batch.error}</ErrorBox>
       )}
-      {fetcher.data?.error && <ErrorBox title="Couldn't start proving">{fetcher.data.error}</ErrorBox>}
+      {fetcher.data?.error && <ErrorBox className="mb-6" title="Couldn't start proving">{fetcher.data.error}</ErrorBox>}
       <div className="flex justify-end">
         <Button
           disabled={submitting}
@@ -342,7 +305,7 @@ function FundStep({ batch, vault }: { batch: Batch; vault: VaultConnection | nul
     return (
       <div>
         <StepTitle title="3. Fund the Vault">Deposit the batch total.</StepTitle>
-        <ErrorBox title="Funding isn't set up">
+        <ErrorBox className="mb-6" title="Funding isn't set up">
           The API has no vault configured (STELLAR_RPC_URL, STELLAR_NETWORK_PASSPHRASE,
           VAULT_CONTRACT_ID).
         </ErrorBox>
@@ -438,7 +401,7 @@ function FundStep({ batch, vault }: { batch: Batch; vault: VaultConnection | nul
             </div>
           )}
         </div>
-        {fetcher.data?.error && <ErrorBox title="Not confirmed yet">{fetcher.data.error}</ErrorBox>}
+        {fetcher.data?.error && <ErrorBox className="mb-6" title="Not confirmed yet">{fetcher.data.error}</ErrorBox>}
         <div className="flex justify-end">
           <Button disabled={fetcher.state !== "idle"} className={primary} onClick={() => confirm(sent)}>
             {fetcher.state !== "idle" ? (
@@ -491,7 +454,7 @@ function FundStep({ batch, vault }: { batch: Batch; vault: VaultConnection | nul
         />
       )}
 
-      {error && <ErrorBox title="Not funded">{error}</ErrorBox>}
+      {error && <ErrorBox className="mb-6" title="Not funded">{error}</ErrorBox>}
 
       {review && !busy ? (
         <TxReview

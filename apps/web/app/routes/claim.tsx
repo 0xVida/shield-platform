@@ -1,43 +1,38 @@
 import { useState, useEffect } from "react"
-import { useSearchParams, Link } from "react-router"
+import { useSearchParams } from "react-router"
 import {
-  ShieldCheck,
   LockKey,
   Wallet,
   Cpu,
   CheckCircle,
-  WarningCircle,
   ArrowRight,
-  Sparkle,
-  Copy,
   Check,
   ArrowsClockwise,
   Receipt,
-  FileCode,
   ArrowSquareOut,
-  MagnifyingGlass,
-  SlidersHorizontal,
 } from "@phosphor-icons/react"
 import { Button } from "@workspace/ui/components/button"
-import {
-  addressToField,
-  generateClaimProof,
-  TESTNET_CONFIG,
-  type ClaimProofOutput,
-} from "@workspace/sdk"
+import { generateClaimProof, TESTNET_CONFIG, type ClaimProofOutput } from "@workspace/sdk"
 import {
   ShieldVaultClient,
   submitTransaction,
   type VaultTransaction,
 } from "@workspace/sdk/chain"
 import { useWallet } from "../context/wallet-context"
+import { AppHeader } from "../components/app-header"
+import { ErrorBox } from "../components/error-box"
+import { StepIndicator } from "../components/step-indicator"
 import { WalletConnectButton } from "../components/wallet-button"
 import { TxProgress, stageLabel, type TxStage } from "../components/tx-progress"
 import { TxReview } from "../components/tx-review"
 import { api, type PreparedClaim, type VaultConnection } from "../lib/api"
 import { formatAmount } from "../lib/amount"
 import { explorerUrl } from "../lib/explorer"
-import { claimReview, maxFee, type ReviewLine } from "../lib/tx-review"
+import { claimReview, maxFee, shortAddress, type ReviewLine } from "../lib/tx-review"
+
+export function meta() {
+  return [{ title: "Claim · ShieldZK" }]
+}
 
 // The testnet deployment, for when the API doesn't say which vault it uses
 const FALLBACK_VAULT: VaultConnection = {
@@ -47,70 +42,46 @@ const FALLBACK_VAULT: VaultConnection = {
   allowHttp: false,
 }
 
-// Depth-10 sample vector from batch.json (Batch 42, allocation 0)
-const DEMO_CLAIM = {
-  batchId: "42",
-  amount: "50",
-  secret: "111111111",
-  leafIndex: 0,
-  root: "0x0a031a7895e72614b467d604aef4ab02a493fa3ca23d142ea025dd8ce079c514",
-  nullifierHash: "0x30128a873ad453f032bc29b9950c02a2d26aa9bc31b9c565771047e85037def0",
-  pathElements: [
-    "0x1d29cd3c383ccac60457708ac19860bf11e0f8e0763350e85b4e19cecc014ca8",
-    "0x09ed35bca4579f2ec2d88ac5ae9ec69893cb4468b867c06d75431dc1454aa6dd",
-    "0x1069673dcdb12263df301a6ff584a7ec261a44cb9dc68df067a4774460b1f1e1",
-    "0x18f43331537ee2af2e3d758d50f72106467c6eea50371dd528d57eb2b856d238",
-    "0x07f9d837cb17b0d36320ffe93ba52345f1b728571a568265caac97559dbc952a",
-    "0x2b94cf5e8746b3f5c9631f4c5df32907a699c58c94b2ad4d7b5cec1639183f55",
-    "0x2dee93c5a666459646ea7d22cca9e1bcfed71e6951b953611d11dda32ea09d78",
-    "0x078295e5a22b84e982cf601eb639597b8b0515a88cb5ac7fa8a4aabe3c87349d",
-    "0x2fa5e5f18f6027a6501bec864564472a616b2e274a41211a444cbe3a99f3cc61",
-    "0x0e884376d0d8fd21ecb780389e941f66e45e7acce3e228ab3e2156a614fcd747",
-  ],
-  pathIndices: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+const STEPS = [
+  { title: "Allocation", icon: LockKey },
+  { title: "Payout Address", icon: Wallet },
+  { title: "Claim", icon: Cpu },
+  { title: "Done", icon: CheckCircle },
+]
+
+const input =
+  "w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500 transition-colors font-mono"
+const primary =
+  "bg-emerald-500 hover:bg-emerald-400 text-neutral-950 font-semibold px-5 flex items-center gap-2 cursor-pointer disabled:opacity-50"
+const secondary = "border-neutral-800 text-neutral-300 hover:bg-neutral-800 cursor-pointer"
+
+/** What a looked-up allocation allows: only a funded batch's unspent claim can be made. */
+function claimState(claim: PreparedClaim): { label: string; canClaim: boolean } {
+  if (claim.isSpent) return { label: "Already claimed", canClaim: false }
+  if (claim.batchStatus !== "funded") return { label: "Batch not funded yet", canClaim: false }
+  return { label: "Ready to claim", canClaim: claim.isEligible }
 }
 
 export default function ClaimPage() {
   const [searchParams] = useSearchParams()
-  const { address: walletAddress, isConnected: isWalletConnected, signTransaction } = useWallet()
+  const { address: walletAddress, isConnected, signTransaction } = useWallet()
 
-  // SDP Lookup states
-  const [sdpBatchId, setSdpBatchId] = useState(searchParams.get("batch") || "")
-  const [sdpRecipientId, setSdpRecipientId] = useState(searchParams.get("recipient") || "")
+  // Finding the allocation
+  const [lookupBatch, setLookupBatch] = useState(searchParams.get("batch") ?? "")
+  const [lookupRecipient, setLookupRecipient] = useState(searchParams.get("recipient") ?? "")
   const [isLookingUp, setIsLookingUp] = useState(false)
-  const [retrievedClaim, setRetrievedClaim] = useState<PreparedClaim | null>(null)
-  const [manualMode, setManualMode] = useState(false)
+  const [claim, setClaim] = useState<PreparedClaim | null>(null)
 
-  // Form states
-  const [batchId, setBatchId] = useState(searchParams.get("batch") || DEMO_CLAIM.batchId)
-  // Batch ids are per funder, so a batch is (funder, batchId)
-  const [funder, setFunder] = useState(searchParams.get("funder") || "")
-  const [amount, setAmount] = useState(searchParams.get("amount") || DEMO_CLAIM.amount)
-  const [secret, setSecret] = useState(searchParams.get("secret") || DEMO_CLAIM.secret)
-  const [leafIndex, setLeafIndex] = useState(
-    searchParams.get("index") ? Number(searchParams.get("index")) : DEMO_CLAIM.leafIndex
-  )
-  const [root, setRoot] = useState(searchParams.get("root") || DEMO_CLAIM.root)
-  const [nullifierHash, setNullifierHash] = useState(
-    searchParams.get("nullifier") || DEMO_CLAIM.nullifierHash
-  )
-  const [pathElements, setPathElements] = useState<string[]>(DEMO_CLAIM.pathElements)
-  const [pathIndices, setPathIndices] = useState<number[]>(DEMO_CLAIM.pathIndices)
-  const [recipient, setRecipient] = useState(
-    searchParams.get("recipient") && searchParams.get("recipient")?.startsWith("G")
-      ? searchParams.get("recipient")!
-      : "GCFIRY65OQE7DFP5KLNS2PF2LVZMUZYJX4OZIEQ36N2IQANUB5XVYOJR"
-  )
+  // Where the payout goes: the connected wallet, unless typed in
+  const [recipientInput, setRecipientInput] = useState<string>()
+  const recipient = recipientInput ?? walletAddress ?? ""
 
-  // Flow & proving states
-  const [step, setStep] = useState<1 | 2 | 3 | 4>(1)
-  const [isProving, setIsProving] = useState(false)
-  const [provingStage, setProvingStage] = useState("")
-  const [proofOutput, setProofOutput] = useState<ClaimProofOutput | null>(null)
-  const [copied, setCopied] = useState(false)
+  const [step, setStep] = useState(1)
+  const [provingStage, setProvingStage] = useState<string | null>(null)
+  const [proof, setProof] = useState<ClaimProofOutput | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  // Withdrawal / settlement states
+  // Sending the claim
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitStage, setSubmitStage] = useState<TxStage | null>(null)
   const [submitFailed, setSubmitFailed] = useState(false)
@@ -124,128 +95,75 @@ export default function ClaimPage() {
     api
       .config()
       .then((config) => config.vault && setVault(config.vault))
-      .catch(() => { })
+      .catch(() => {})
   }, [])
   const txLink = (hash: string) => explorerUrl(vault.networkPassphrase, "tx", hash)
 
-  // Auto-lookup if batch and recipient parameters are present in URL
+  // A claim link carries the batch and recipient: look the allocation up straight away
   useEffect(() => {
-    const qBatch = searchParams.get("batch")
-    const qRecipient = searchParams.get("recipient")
-    if (qBatch && qRecipient) {
-      handleLookupClaim(qBatch, qRecipient)
-    }
+    const batch = searchParams.get("batch")
+    const reference = searchParams.get("recipient")
+    if (batch && reference) void lookUp(batch, reference)
   }, [searchParams])
 
-  // Auto-fill connected wallet if recipient was unchanged default
-  useEffect(() => {
-    if (
-      walletAddress &&
-      (!recipient || recipient === "GCFIRY65OQE7DFP5KLNS2PF2LVZMUZYJX4OZIEQ36N2IQANUB5XVYOJR")
-    ) {
-      setRecipient(walletAddress)
-    }
-  }, [walletAddress])
-
-  async function handleLookupClaim(lookupBatch: string, lookupRecipient: string) {
-    if (!lookupBatch.trim() || !lookupRecipient.trim()) return
+  async function lookUp(batchId: string, reference: string) {
+    if (!batchId.trim() || !reference.trim()) return
     setError(null)
     setIsLookingUp(true)
     try {
-      const data = await api.prepareClaim({
-        batchId: lookupBatch.trim(),
-        recipient: lookupRecipient.trim(),
-      })
-      setRetrievedClaim(data)
-      setBatchId(data.batchId)
-      setFunder(data.funder ?? "")
-      setAmount(data.amount)
-      setSecret(data.secret)
-      setLeafIndex(data.leafIndex)
-      setRoot(data.root)
-      setNullifierHash(data.nullifierHash)
-      setPathElements(data.pathElements)
-      setPathIndices(data.pathIndices)
-      setManualMode(false)
-    } catch (err: any) {
-      console.warn("Could not retrieve claim from API:", err)
-      setError(
-        err?.message ||
-        "Could not retrieve allocation. You can use manual entry or demo data."
-      )
+      setClaim(await api.prepareClaim({ batchId: batchId.trim(), recipient: reference.trim() }))
+    } catch (err) {
+      setClaim(null)
+      setError(err instanceof Error ? err.message : "Couldn't find this allocation")
     } finally {
       setIsLookingUp(false)
     }
   }
 
-  function loadDemoData() {
-    setRetrievedClaim(null)
-    setBatchId(DEMO_CLAIM.batchId)
-    setAmount(DEMO_CLAIM.amount)
-    setSecret(DEMO_CLAIM.secret)
-    setLeafIndex(DEMO_CLAIM.leafIndex)
-    setRoot(DEMO_CLAIM.root)
-    setNullifierHash(DEMO_CLAIM.nullifierHash)
-    setPathElements(DEMO_CLAIM.pathElements)
-    setPathIndices(DEMO_CLAIM.pathIndices)
-    setError(null)
-    setManualMode(true)
-  }
-
   async function handleGenerateProof() {
+    if (!claim) return
     setError(null)
-    setIsProving(true)
     try {
-      setProvingStage("1. Fetching circuit artifacts (WASM & ZKey)...")
-      const wasmRes = await fetch("/zk/claim.wasm")
-      if (!wasmRes.ok) throw new Error(`Could not load /zk/claim.wasm (HTTP ${wasmRes.status})`)
-      const wasmBuffer = new Uint8Array(await wasmRes.arrayBuffer())
-
-      const zkeyRes = await fetch("/zk/claim.zkey")
-      if (!zkeyRes.ok) throw new Error(`Could not load /zk/claim.zkey (HTTP ${zkeyRes.status})`)
-      const zkeyBuffer = new Uint8Array(await zkeyRes.arrayBuffer())
-
-      setProvingStage("2. Encoding recipient address with SHA-256 (D4)...")
-      await new Promise((r) => setTimeout(r, 200))
-
-      setProvingStage("3. Synthesizing Groth16 zero-knowledge proof in WASM...")
-      const out = await generateClaimProof(
-        {
-          root,
-          nullifierHash,
-          recipientAddress: recipient,
-          amount,
-          secret,
-          batchId,
-          pathElements,
-          pathIndices,
-        },
-        wasmBuffer,
-        zkeyBuffer
+      setProvingStage("Downloading the circuit files...")
+      const [wasm, zkey] = await Promise.all(
+        ["/zk/claim.wasm", "/zk/claim.zkey"].map(async (path) => {
+          const res = await fetch(path)
+          if (!res.ok) throw new Error(`Could not load ${path} (HTTP ${res.status})`)
+          return new Uint8Array(await res.arrayBuffer())
+        })
       )
 
-      setProvingStage("4. Serializing BN254 points for Soroban pairing check...")
-      await new Promise((r) => setTimeout(r, 200))
-
-      setProofOutput(out)
+      setProvingStage("Generating the proof in your browser. This can take a minute...")
+      const out = await generateClaimProof(
+        {
+          root: claim.root,
+          nullifierHash: claim.nullifierHash,
+          recipientAddress: recipient,
+          amount: claim.amount,
+          secret: claim.secret,
+          batchId: claim.batchId,
+          pathElements: claim.pathElements,
+          pathIndices: claim.pathIndices,
+        },
+        wasm!,
+        zkey!
+      )
+      setProof(out)
       setStep(3)
-    } catch (err: any) {
-      console.error("Proof generation error:", err)
-      setError(err?.message || "Failed to generate Groth16 proof")
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to generate the proof")
     } finally {
-      setIsProving(false)
-      setProvingStage("")
+      setProvingStage(null)
     }
   }
 
   /** Builds and simulates the claim, then shows what the wallet will sign. */
   async function handleReview() {
-    if (!proofOutput || !walletAddress) return
+    if (!claim || !proof || !walletAddress) return
+    // Batch ids are per funder, so a batch is (funder, batchId)
+    const funder = claim.funder
     if (!funder) {
-      setError(
-        "This claim doesn't say who funded the batch: batch ids are per funder. " +
-        "Look the claim up again, or enter the batch's funder in manual entry."
-      )
+      setError("This claim doesn't say who funded the batch. Look the claim up again.")
       return
     }
     setError(null)
@@ -253,26 +171,21 @@ export default function ClaimPage() {
     setSubmitStage(null)
     setSubmitFailed(false)
     try {
-      const cleanNullifier = nullifierHash.startsWith("0x")
-        ? nullifierHash.slice(2)
-        : nullifierHash
-      const nullifierBigInt = BigInt("0x" + cleanNullifier)
-
       const tx = await new ShieldVaultClient(vault).buildWithdraw({
         source: walletAddress,
         funder,
-        batchId: BigInt(batchId),
-        amount: BigInt(amount),
+        batchId: BigInt(claim.batchId),
+        amount: BigInt(claim.amount),
         recipient,
-        nullifier: nullifierBigInt,
-        proof: proofOutput.proofBytes,
+        nullifier: BigInt(claim.nullifierHash),
+        proof: proof.proofBytes,
       })
       setReview({
         tx,
         lines: claimReview({
-          batchId,
+          batchId: claim.batchId,
           funder,
-          amount: BigInt(amount),
+          amount: BigInt(claim.amount),
           recipient,
           submitter: walletAddress,
           vault: vault.contractId,
@@ -280,9 +193,8 @@ export default function ClaimPage() {
           fee: maxFee(tx),
         }),
       })
-    } catch (err: any) {
-      console.error("Withdrawal error:", err)
-      setError(err?.message || "Withdrawal failed on-chain")
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't prepare the claim")
     } finally {
       setIsSubmitting(false)
     }
@@ -305,10 +217,9 @@ export default function ClaimPage() {
       setTxHash(hash)
       setSubmitStage("done")
       setStep(4)
-    } catch (err: any) {
-      console.error("Withdrawal error:", err)
+    } catch (err) {
       setSubmitFailed(true)
-      setError(err?.message || "Withdrawal failed on-chain")
+      setError(err instanceof Error ? err.message : "The claim failed on-chain")
     } finally {
       // A failed send may have signed it; build it afresh next time
       setReview(null)
@@ -316,514 +227,192 @@ export default function ClaimPage() {
     }
   }
 
-  function copyProof() {
-    if (!proofOutput) return
-    navigator.clipboard.writeText(proofOutput.proofHex)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
+  function startOver() {
+    setStep(1)
+    setClaim(null)
+    setProof(null)
+    setTxHash(null)
+    setSubmitStage(null)
+    setError(null)
   }
+
+  const state = claim && claimState(claim)
 
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-100 antialiased selection:bg-emerald-500/30 selection:text-emerald-300">
-      {/* Top Navigation */}
-      <header className="border-b border-neutral-800/80 bg-neutral-900/40 backdrop-blur-md sticky top-0 z-50">
-        <div className="max-w-5xl mx-auto px-4 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Link to="/" className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
-                <ShieldCheck size={20} weight="duotone" />
-              </div>
-              <span className="font-semibold tracking-tight text-white flex items-center gap-2">
-                ShieldZK
-                <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-950 border border-emerald-700/50 text-emerald-300 font-medium">
-                  Testnet
-                </span>
-              </span>
-            </Link>
-          </div>
+      <AppHeader />
 
-          <div className="flex items-center gap-4 text-xs">
-            <div className="hidden sm:flex items-center gap-2 text-neutral-400">
-              <span>Vault:</span>
-              <code className="px-2 py-1 bg-neutral-800/60 border border-neutral-700/60 rounded text-neutral-300 font-mono">
-                {vault.contractId.slice(0, 4)}...
-                {vault.contractId.slice(-4)}
-              </code>
-            </div>
-
-            <Link
-              to="/batches"
-              className="text-neutral-400 hover:text-white transition-colors duration-150"
-            >
-              Batches
-            </Link>
-            <Link
-              to="/activity"
-              className="text-neutral-400 hover:text-white transition-colors duration-150"
-            >
-              Activity
-            </Link>
-
-            {/* Stellar Wallet Connect */}
-            <WalletConnectButton onAddressSelect={(addr) => setRecipient(addr)} />
-          </div>
-        </div>
-      </header>
-
-      {/* Main Container */}
       <main className="max-w-3xl mx-auto px-4 py-12">
-        {/* Title & Subtitle */}
         <div className="text-center mb-10">
           <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-white mb-2">
-            Confidential Claim Portal
+            Claim Your Allocation
           </h1>
           <p className="text-neutral-400 text-sm max-w-lg mx-auto">
-            Prove your private allocation entitlement without revealing your secret,
-            opening commitment, or sender linkage to the public ledger.
+            Your browser proves you're owed this allocation without revealing which one
+            it is. Only the amount and the payout address appear on-chain.
           </p>
         </div>
 
-        {/* Step Indicator */}
-        <div className="grid grid-cols-4 gap-2 mb-8">
-          {[
-            { num: 1, title: "Allocation", icon: LockKey },
-            { num: 2, title: "Recipient", icon: Wallet },
-            { num: 3, title: "ZK Proof", icon: Cpu },
-            { num: 4, title: "Withdraw", icon: CheckCircle },
-          ].map((s) => {
-            const Icon = s.icon
-            const isActive = step === s.num
-            const isCompleted = step > s.num
-            return (
-              <div
-                key={s.num}
-                onClick={() => isCompleted && setStep(s.num as any)}
-                className={`p-3 rounded-xl border text-center transition-all ${isCompleted
-                    ? "bg-neutral-900/60 border-emerald-500/40 text-emerald-400 cursor-pointer"
-                    : isActive
-                      ? "bg-neutral-900 border-emerald-500 text-white shadow-lg shadow-emerald-950/40"
-                      : "bg-neutral-900/20 border-neutral-800/60 text-neutral-500"
-                  }`}
-              >
-                <div className="flex items-center justify-center gap-1.5 mb-1">
-                  <Icon size={16} weight={isActive ? "duotone" : "regular"} />
-                  <span className="text-xs font-medium">Step {s.num}</span>
-                </div>
-                <div className="text-[11px] font-medium tracking-tight truncate">
-                  {s.title}
-                </div>
-              </div>
-            )
-          })}
-        </div>
+        <StepIndicator steps={STEPS} current={step} onSelect={step < 4 ? setStep : undefined} />
 
-        {/* Main Card */}
-        <div className="bg-neutral-900/80 border border-neutral-800/80 rounded-2xl p-6 sm:p-8 backdrop-blur-xl shadow-2xl relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-72 h-72 bg-emerald-500/5 rounded-full blur-3xl pointer-events-none" />
-
+        <div className="bg-neutral-900/80 border border-neutral-800/80 rounded-2xl p-6 sm:p-8">
           {error && (
-            <div className="mb-6 p-4 rounded-xl bg-red-950/40 border border-red-800/60 text-red-300 text-xs flex items-start gap-3">
-              <WarningCircle size={18} className="shrink-0 mt-0.5 text-red-400" />
-              <div>
-                <span className="font-semibold block mb-0.5">Verification Error</span>
-                {error}
-              </div>
-            </div>
+            <ErrorBox title="Something went wrong" className="mb-6">
+              {error}
+            </ErrorBox>
           )}
 
-          {/* STEP 1: ALLOCATION INPUT & SDP RETRIEVAL */}
+          {/* STEP 1: FIND THE ALLOCATION */}
           {step === 1 && (
             <div className="space-y-6">
-              <div className="flex items-center justify-between pb-4 border-b border-neutral-800">
-                <div>
-                  <h2 className="text-base font-semibold text-white">
-                    1. Private Allocation Data
-                  </h2>
-                  <p className="text-xs text-neutral-400">
-                    Retrieve via SDP invitation channel or enter claim credentials.
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setManualMode(!manualMode)}
-                    className="text-xs text-neutral-400 hover:text-white flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-neutral-800 transition-colors"
-                  >
-                    <SlidersHorizontal size={13} />
-                    {manualMode ? "SDP Lookup" : "Custom Params"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={loadDemoData}
-                    className="text-xs text-emerald-400 hover:text-emerald-300 flex items-center gap-1.5 transition-colors font-medium bg-emerald-950/40 border border-emerald-800/40 px-2.5 py-1 rounded-md cursor-pointer"
-                  >
-                    <ArrowsClockwise size={13} />
-                    Load Sample (Batch 42)
-                  </button>
-                </div>
+              <StepTitle title="1. Find your allocation">
+                Use the batch id and reference from your invitation.
+              </StepTitle>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <Field label="Batch ID" htmlFor="batch">
+                  <input
+                    id="batch"
+                    value={lookupBatch}
+                    onChange={(e) => setLookupBatch(e.target.value)}
+                    className={input}
+                    placeholder="e.g. 1793579695998"
+                  />
+                </Field>
+                <Field label="Your reference (email, phone or SDP id)" htmlFor="reference">
+                  <input
+                    id="reference"
+                    value={lookupRecipient}
+                    onChange={(e) => setLookupRecipient(e.target.value)}
+                    className={input}
+                    placeholder="e.g. alice@example.com"
+                  />
+                </Field>
               </div>
 
-              {/* SDP Onboarding / Claim Retrieval Form */}
-              {!manualMode && (
-                <div className="space-y-4">
-                  <div className="p-4 rounded-xl bg-neutral-950/60 border border-neutral-800/80 space-y-3">
-                    <div className="flex items-center gap-2 text-xs font-medium text-emerald-400">
-                      <MagnifyingGlass size={15} />
-                      <span>SDP Recipient Onboarding & Credential Retrieval</span>
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-[11px] font-medium text-neutral-400 mb-1">
-                          Batch ID (from disbursement invitation)
-                        </label>
-                        <input
-                          type="text"
-                          value={sdpBatchId}
-                          onChange={(e) => setSdpBatchId(e.target.value)}
-                          placeholder="e.g. 42"
-                          className="w-full bg-neutral-900 border border-neutral-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 font-mono"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[11px] font-medium text-neutral-400 mb-1">
-                          Recipient Reference (email, phone, or SDP ID)
-                        </label>
-                        <input
-                          type="text"
-                          value={sdpRecipientId}
-                          onChange={(e) => setSdpRecipientId(e.target.value)}
-                          placeholder="e.g. alice@example.com"
-                          className="w-full bg-neutral-900 border border-neutral-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 font-mono"
-                        />
-                      </div>
-                    </div>
-                    <div className="flex justify-end pt-1">
-                      <Button
-                        disabled={isLookingUp || !sdpBatchId.trim() || !sdpRecipientId.trim()}
-                        onClick={() => handleLookupClaim(sdpBatchId, sdpRecipientId)}
-                        className="bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-emerald-300 text-xs font-semibold px-4 py-1.5 rounded-lg flex items-center gap-1.5 cursor-pointer disabled:opacity-40"
-                      >
-                        {isLookingUp ? (
-                          <>
-                            <ArrowsClockwise size={13} className="animate-spin" />
-                            Fetching Credential...
-                          </>
-                        ) : (
-                          <>
-                            <Receipt size={14} />
-                            Retrieve Confidential Allocation
-                          </>
-                        )}
-                      </Button>
-                    </div>
-                  </div>
-
-                  {/* Retrieved Allocation Card */}
-                  {retrievedClaim && (
-                    <div className="p-4 rounded-xl bg-emerald-950/20 border border-emerald-500/30 space-y-3 animate-in fade-in-50">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-semibold text-white flex items-center gap-2">
-                          <CheckCircle size={16} className="text-emerald-400" />
-                          Confidential Allocation Verified
-                        </span>
-                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-950 border border-emerald-700/50 text-emerald-300 font-medium">
-                          {retrievedClaim.isSpent ? "Already Claimed" : "Ready to Claim"}
-                        </span>
-                      </div>
-                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 pt-1 text-xs">
-                        <div>
-                          <span className="text-neutral-500 block text-[11px]">Private Allocation</span>
-                          <span className="text-base font-bold text-emerald-400 font-mono">
-                            {formatAmount(BigInt(retrievedClaim.amount))} Tokens
-                          </span>
-                        </div>
-                        <div>
-                          <span className="text-neutral-500 block text-[11px]">Recipient Reference</span>
-                          <span className="text-xs font-medium text-neutral-200 truncate block">
-                            {retrievedClaim.recipient}
-                          </span>
-                        </div>
-                        <div>
-                          <span className="text-neutral-500 block text-[11px]">Batch ID</span>
-                          <span className="text-xs font-mono text-neutral-300">
-                            #{retrievedClaim.batchId}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Manual parameter inputs (visible when manualMode is active or for sample) */}
-              {manualMode && (
-                <div className="space-y-4">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs font-medium text-neutral-300 mb-1.5">
-                        Batch ID (u64)
-                      </label>
-                      <input
-                        type="text"
-                        value={batchId}
-                        onChange={(e) => setBatchId(e.target.value)}
-                        className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500 transition-colors font-mono"
-                        placeholder="42"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-neutral-300 mb-1.5">
-                        Batch Funder (G... or C...)
-                      </label>
-                      <input
-                        type="text"
-                        value={funder}
-                        onChange={(e) => setFunder(e.target.value.trim())}
-                        className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500 transition-colors font-mono"
-                        placeholder="The address that funded the batch"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-medium text-neutral-300 mb-1.5">
-                        Allocation Amount (Stroops / Base Units)
-                      </label>
-                      <input
-                        type="text"
-                        value={amount}
-                        onChange={(e) => setAmount(e.target.value)}
-                        className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500 transition-colors font-mono font-medium text-emerald-400"
-                        placeholder="50"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-medium text-neutral-300 mb-1.5">
-                        Private Secret (Opening)
-                      </label>
-                      <input
-                        type="password"
-                        value={secret}
-                        onChange={(e) => setSecret(e.target.value)}
-                        className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500 transition-colors font-mono"
-                        placeholder="Secret key or random field element"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-medium text-neutral-300 mb-1.5">
-                        Leaf Index
-                      </label>
-                      <input
-                        type="number"
-                        value={leafIndex}
-                        onChange={(e) => setLeafIndex(Number(e.target.value))}
-                        className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500 transition-colors font-mono"
-                        placeholder="0"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-medium text-neutral-300 mb-1.5">
-                      Merkle Tree Root
-                    </label>
-                    <input
-                      type="text"
-                      value={root}
-                      onChange={(e) => setRoot(e.target.value)}
-                      className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-xs text-neutral-300 focus:outline-none focus:border-emerald-500 transition-colors font-mono"
-                      placeholder="0x..."
-                    />
-                  </div>
-                </div>
-              )}
-
-              <div className="pt-2 flex justify-end">
+              <div className="flex justify-end">
                 <Button
-                  onClick={() => setStep(2)}
-                  className="bg-emerald-500 hover:bg-emerald-400 text-neutral-950 font-semibold px-5 flex items-center gap-2 cursor-pointer"
+                  variant="outline"
+                  disabled={isLookingUp || !lookupBatch.trim() || !lookupRecipient.trim()}
+                  onClick={() => lookUp(lookupBatch, lookupRecipient)}
+                  className={secondary}
                 >
-                  Continue to Recipient Binding
+                  {isLookingUp ? (
+                    <ArrowsClockwise size={14} className="animate-spin" />
+                  ) : (
+                    <Receipt size={14} />
+                  )}
+                  Find Allocation
+                </Button>
+              </div>
+
+              {claim && state && (
+                <div className="p-4 rounded-xl bg-neutral-950/60 border border-neutral-800 grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
+                  <div>
+                    <span className="text-neutral-500 block text-[11px]">Your allocation</span>
+                    <span className="text-base font-bold text-emerald-400 font-mono">
+                      {formatAmount(BigInt(claim.amount))} tokens
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-neutral-500 block text-[11px]">Batch</span>
+                    <span className="font-mono text-neutral-300">#{claim.batchId}</span>
+                  </div>
+                  <div>
+                    <span className="text-neutral-500 block text-[11px]">Status</span>
+                    <span className={state.canClaim ? "text-emerald-400" : "text-amber-300"}>
+                      {state.label}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex justify-end">
+                <Button disabled={!state?.canClaim} onClick={() => setStep(2)} className={primary}>
+                  Continue
                   <ArrowRight size={16} />
                 </Button>
               </div>
             </div>
           )}
 
-          {/* STEP 2: RECIPIENT WALLET BINDING */}
-          {step === 2 && (
+          {/* STEP 2: PAYOUT ADDRESS AND PROOF */}
+          {step === 2 && claim && (
             <div className="space-y-6">
-              <div className="pb-4 border-b border-neutral-800">
-                <h2 className="text-base font-semibold text-white">
-                  2. Recipient Wallet Binding (D4)
-                </h2>
-                <p className="text-xs text-neutral-400">
-                  Your Stellar payout address is cryptographically bound inside the circuit constraints,
-                  guaranteeing miners or relayers cannot front-run or redirect your funds.
-                </p>
-              </div>
+              <StepTitle title="2. Choose where the payout goes">
+                The proof is bound to this address, so nobody who sees it can redirect the
+                payout.
+              </StepTitle>
 
-              {/* Wallet connection banner inside Step 2 */}
-              <div className="flex items-center justify-between p-3.5 rounded-xl bg-neutral-950/80 border border-neutral-800">
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
-                    <Wallet size={20} weight="duotone" />
-                  </div>
-                  <div>
-                    <div className="text-xs font-medium text-white">Stellar Wallet (Freighter)</div>
-                    <div className="text-[11px] text-neutral-400">
-                      {isWalletConnected
-                        ? `Connected: ${walletAddress?.slice(0, 6)}...${walletAddress?.slice(-4)}`
-                        : "Connect Freighter wallet to auto-bind your recipient address"}
-                    </div>
-                  </div>
+              {!isConnected && (
+                <div className="flex items-center justify-between gap-3 p-3.5 rounded-xl bg-neutral-950/80 border border-neutral-800 text-xs text-neutral-400">
+                  Connect Freighter to pay out to your wallet. You'll also need it to sign
+                  the claim.
+                  <WalletConnectButton />
                 </div>
-                {isWalletConnected ? (
-                  <button
-                    type="button"
-                    onClick={() => walletAddress && setRecipient(walletAddress)}
-                    className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20 transition-colors cursor-pointer"
-                  >
-                    Use Wallet Address
-                  </button>
-                ) : (
-                  <WalletConnectButton onAddressSelect={(addr) => setRecipient(addr)} />
+              )}
+
+              <Field label="Payout address (G... or C...)" htmlFor="payout">
+                <input
+                  id="payout"
+                  value={recipient}
+                  onChange={(e) => setRecipientInput(e.target.value.trim())}
+                  className={input}
+                  placeholder="G..."
+                />
+                {isConnected && recipient === walletAddress && (
+                  <span className="mt-1 text-[11px] text-emerald-400 flex items-center gap-1">
+                    <Check size={12} /> Your connected wallet
+                  </span>
                 )}
-              </div>
+              </Field>
 
-              <div className="space-y-4">
-                <div>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <label className="block text-xs font-medium text-neutral-300">
-                      Payout Recipient Stellar Address (G... or C...)
-                    </label>
-                    {isWalletConnected && recipient === walletAddress && (
-                      <span className="text-[11px] text-emerald-400 flex items-center gap-1 font-medium">
-                        <Check size={12} /> Bound to Connected Wallet
-                      </span>
-                    )}
-                  </div>
-                  <input
-                    type="text"
-                    value={recipient}
-                    onChange={(e) => setRecipient(e.target.value)}
-                    className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500 transition-colors font-mono"
-                    placeholder="GCFIRY65OQE7DFP5KLNS2PF2LVZMUZYJX4OZIEQ36N2IQANUB5XVYOJR"
-                  />
+              {provingStage && (
+                <div className="p-3 rounded-lg bg-emerald-950/20 border border-emerald-900/40 text-emerald-400 text-xs flex items-center gap-2 animate-pulse">
+                  <Cpu size={15} />
+                  {provingStage}
                 </div>
+              )}
 
-                <div className="p-4 rounded-xl bg-neutral-950/60 border border-neutral-800/80 text-xs space-y-2">
-                  <div className="text-neutral-400 flex items-center gap-2">
-                    <Receipt size={16} className="text-emerald-400" />
-                    <span>Summary of Claim Statement:</span>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 text-neutral-300 pt-1 font-mono text-[11px]">
-                    <div>
-                      <span className="text-neutral-500 block">Batch ID:</span> {batchId}
-                    </div>
-                    <div>
-                      <span className="text-neutral-500 block">Amount:</span> {amount} units
-                    </div>
-                    <div>
-                      <span className="text-neutral-500 block">Leaf Slot:</span> #{leafIndex}
-                    </div>
-                    <div>
-                      <span className="text-neutral-500 block">Merkle Path:</span>{" "}
-                      {pathElements.length} levels
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="pt-2 flex justify-between items-center">
-                <Button
-                  variant="outline"
-                  onClick={() => setStep(1)}
-                  className="border-neutral-800 text-neutral-300 hover:bg-neutral-800 cursor-pointer"
-                >
+              <div className="flex justify-between items-center">
+                <Button variant="outline" onClick={() => setStep(1)} className={secondary}>
                   Back
                 </Button>
                 <Button
-                  disabled={isProving || !recipient}
+                  disabled={!!provingStage || !recipient}
                   onClick={handleGenerateProof}
-                  className="bg-emerald-500 hover:bg-emerald-400 text-neutral-950 font-semibold px-5 flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                  className={primary}
                 >
-                  {isProving ? (
-                    <>
-                      <ArrowsClockwise size={16} className="animate-spin" />
-                      Generating Proof...
-                    </>
+                  {provingStage ? (
+                    <ArrowsClockwise size={16} className="animate-spin" />
                   ) : (
-                    <>
-                      <Cpu size={16} />
-                      Generate Zero-Knowledge Proof
-                    </>
+                    <Cpu size={16} />
                   )}
+                  Generate Proof
                 </Button>
               </div>
-
-              {isProving && (
-                <div className="mt-4 p-3 rounded-lg bg-emerald-950/20 border border-emerald-900/40 text-emerald-400 text-xs flex items-center gap-2 animate-pulse">
-                  <Cpu size={15} />
-                  <span>{provingStage}</span>
-                </div>
-              )}
             </div>
           )}
 
-          {/* STEP 3: PROOF GENERATED & READY */}
-          {step === 3 && proofOutput && (
+          {/* STEP 3: REVIEW AND SEND */}
+          {step === 3 && claim && proof && (
             <div className="space-y-6">
-              <div className="pb-4 border-b border-neutral-800 flex items-center justify-between">
-                <div>
-                  <h2 className="text-base font-semibold text-white flex items-center gap-2">
-                    <CheckCircle size={20} className="text-emerald-400" />
-                    3. Proof Generated Successfully!
-                  </h2>
-                  <p className="text-xs text-neutral-400">
-                    Groth16 proof is verified off-chain and serialized for Soroban BN254.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={copyProof}
-                  className="text-xs text-neutral-300 hover:text-white flex items-center gap-1.5 bg-neutral-800/80 px-2.5 py-1 rounded-md transition-colors cursor-pointer"
-                >
-                  {copied ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
-                  {copied ? "Copied" : "Copy Hex"}
-                </button>
-              </div>
+              <StepTitle title="3. Claim">
+                The proof is ready. Review the claim, then sign it with your wallet.
+              </StepTitle>
 
-              {/* Proof stats */}
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
-                <div className="p-3 bg-neutral-950 rounded-xl border border-neutral-800">
-                  <span className="text-neutral-500 block text-[11px]">Proof Size</span>
-                  <span className="font-mono font-medium text-white">256 bytes (A || B || C)</span>
-                </div>
-                <div className="p-3 bg-neutral-950 rounded-xl border border-neutral-800">
-                  <span className="text-neutral-500 block text-[11px]">Public Inputs</span>
-                  <span className="font-mono font-medium text-white">4 elements</span>
-                </div>
-                <div className="p-3 bg-neutral-950 rounded-xl border border-neutral-800">
-                  <span className="text-neutral-500 block text-[11px]">Bound Nullifier</span>
-                  <span className="font-mono font-medium text-white truncate block">
-                    {nullifierHash.slice(0, 10)}...{nullifierHash.slice(-6)}
+              <div className="p-4 rounded-xl bg-neutral-950/60 border border-neutral-800 grid grid-cols-2 gap-3 text-xs">
+                <div>
+                  <span className="text-neutral-500 block text-[11px]">Payout</span>
+                  <span className="font-mono font-semibold text-emerald-400">
+                    {formatAmount(BigInt(claim.amount))} tokens
                   </span>
                 </div>
-              </div>
-
-              {/* Public Signals Preview */}
-              <div className="p-4 rounded-xl bg-neutral-950 border border-neutral-800 space-y-2">
-                <div className="text-xs font-semibold text-neutral-300 flex items-center gap-2">
-                  <FileCode size={16} className="text-emerald-400" />
-                  Public Input Order Passed to Soroban Verifier:
-                </div>
-                <div className="font-mono text-[11px] text-neutral-400 space-y-1">
-                  <div>[0] root: <span className="text-neutral-200">{root.slice(0, 24)}...</span></div>
-                  <div>[1] nullifier: <span className="text-neutral-200">{nullifierHash.slice(0, 24)}...</span></div>
-                  <div>[2] recipient (D4): <span className="text-neutral-200">{proofOutput.recipientField.toString().slice(0, 24)}...</span></div>
-                  <div>[3] amount: <span className="text-emerald-400 font-semibold">{amount} units</span></div>
+                <div>
+                  <span className="text-neutral-500 block text-[11px]">To</span>
+                  <span className="font-mono text-neutral-300" title={recipient}>
+                    {shortAddress(recipient)}
+                  </span>
                 </div>
               </div>
 
@@ -844,89 +433,58 @@ export default function ClaimPage() {
                   onCancel={() => setReview(null)}
                 />
               ) : (
-                <div className="pt-2 flex justify-between items-center">
-                  <Button
-                    variant="outline"
-                    onClick={() => setStep(2)}
-                    className="border-neutral-800 text-neutral-300 hover:bg-neutral-800 cursor-pointer"
-                  >
+                <div className="flex justify-between items-center">
+                  <Button variant="outline" onClick={() => setStep(2)} className={secondary}>
                     Back
                   </Button>
-                  <Button
-                    disabled={isSubmitting || !walletAddress}
-                    onClick={handleReview}
-                    className="bg-emerald-500 hover:bg-emerald-400 text-neutral-950 font-semibold px-5 flex items-center gap-2 cursor-pointer disabled:opacity-50"
-                  >
-                    {isSubmitting ? (
-                      <>
-                        <ArrowsClockwise size={16} className="animate-spin" />
-                        {submitStage ? stageLabel(submitStage) : "Preparing your claim..."}
-                      </>
-                    ) : !walletAddress ? (
-                      <>
-                        <Wallet size={16} />
-                        Connect Wallet to Claim
-                      </>
-                    ) : (
-                      <>
-                        <CheckCircle size={16} />
-                        Review Claim
-                      </>
-                    )}
-                  </Button>
+                  {walletAddress ? (
+                    <Button disabled={isSubmitting} onClick={handleReview} className={primary}>
+                      {isSubmitting ? (
+                        <>
+                          <ArrowsClockwise size={16} className="animate-spin" />
+                          {submitStage ? stageLabel(submitStage) : "Preparing your claim..."}
+                        </>
+                      ) : (
+                        <>
+                          <CheckCircle size={16} />
+                          Review Claim
+                        </>
+                      )}
+                    </Button>
+                  ) : (
+                    <WalletConnectButton />
+                  )}
                 </div>
               )}
             </div>
           )}
 
-          {/* STEP 4: SUCCESSFUL SETTLEMENT */}
-          {step === 4 && (
+          {/* STEP 4: PAID */}
+          {step === 4 && claim && (
             <div className="space-y-6 text-center py-6">
               <div className="w-16 h-16 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl flex items-center justify-center text-emerald-400 mx-auto">
                 <CheckCircle size={36} weight="duotone" />
               </div>
-
               <div>
-                <h2 className="text-xl font-bold text-white mb-1">
-                  Claim Successfully Verified!
-                </h2>
-                <p className="text-xs text-neutral-400 max-w-md mx-auto">
-                  The on-chain verifier confirmed the Merkle inclusion proof and nullifier derivation.
-                  Funds have been allocated to your recipient address.
+                <h2 className="text-xl font-bold text-white mb-1">Claimed</h2>
+                <p className="text-xs text-neutral-400">
+                  {formatAmount(BigInt(claim.amount))} tokens were paid to{" "}
+                  <span className="font-mono" title={recipient}>
+                    {shortAddress(recipient)}
+                  </span>
+                  .
                 </p>
               </div>
-
-              <div className="p-4 rounded-xl bg-neutral-950 border border-neutral-800 text-xs text-left max-w-lg mx-auto space-y-2">
-                <div className="text-neutral-400">Transaction Status:</div>
-                <div className="font-mono text-emerald-400 text-xs break-all">
-                  {txHash}
-                </div>
-                <div className="text-[11px] text-neutral-500 pt-2 border-t border-neutral-900">
-                  Vault Contract:{" "}
-                  <code className="text-neutral-400">{vault.contractId}</code>
-                </div>
-              </div>
-
-              <div className="pt-4 flex justify-center gap-3">
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setStep(1)
-                    setProofOutput(null)
-                    setTxHash(null)
-                    setSubmitStage(null)
-                    setRetrievedClaim(null)
-                  }}
-                  className="border-neutral-800 text-neutral-300 hover:bg-neutral-800 cursor-pointer"
-                >
-                  Start Another Claim
+              <div className="flex justify-center gap-3">
+                <Button variant="outline" onClick={startOver} className={secondary}>
+                  Claim Another
                 </Button>
                 {txHash && txLink(txHash) && (
                   <a
                     href={txLink(txHash)}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="bg-emerald-500 hover:bg-emerald-400 text-neutral-950 font-semibold px-4 py-2 rounded-lg text-sm inline-flex items-center gap-1.5 transition-colors cursor-pointer"
+                    className="bg-emerald-500 hover:bg-emerald-400 text-neutral-950 font-semibold px-4 py-2 rounded-lg text-sm inline-flex items-center gap-1.5 transition-colors"
                   >
                     View on Stellar Expert
                     <ArrowSquareOut size={14} />
@@ -937,6 +495,34 @@ export default function ClaimPage() {
           )}
         </div>
       </main>
+    </div>
+  )
+}
+
+function StepTitle({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="pb-4 border-b border-neutral-800">
+      <h2 className="text-base font-semibold text-white">{title}</h2>
+      <p className="text-xs text-neutral-400">{children}</p>
+    </div>
+  )
+}
+
+function Field({
+  label,
+  htmlFor,
+  children,
+}: {
+  label: string
+  htmlFor: string
+  children: React.ReactNode
+}) {
+  return (
+    <div>
+      <label htmlFor={htmlFor} className="block text-xs font-medium text-neutral-300 mb-1.5">
+        {label}
+      </label>
+      {children}
     </div>
   )
 }
