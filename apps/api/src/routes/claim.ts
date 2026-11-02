@@ -111,10 +111,6 @@ export function claimRouter(depsOrVault?: ClaimRouterDeps | ShieldVaultClient): 
     })
   )
 
-  /**
-   * Person 2: Claim Preparation API.
-   * Retrieves allocation data, Merkle witness, and nullifier for an SDP recipient.
-   */
   router.post(
     "/v1/claims/prepare",
     validated({ body: PrepareClaimSchema }, async ({ body }, _req, res) => {
