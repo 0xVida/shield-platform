@@ -32,6 +32,16 @@ export function DisburseHeader() {
           >
             Batches
           </NavLink>
+          <NavLink
+            to="/activity"
+            className={({ isActive }) =>
+              `transition-colors duration-150 ${
+                isActive ? "text-white" : "text-neutral-400 hover:text-white"
+              }`
+            }
+          >
+            Activity
+          </NavLink>
           <Link
             to="/claim"
             className="text-neutral-400 hover:text-white transition-colors duration-150"

@@ -347,6 +347,12 @@ export default function ClaimPage() {
             >
               Batches
             </Link>
+            <Link
+              to="/activity"
+              className="text-neutral-400 hover:text-white transition-colors duration-150"
+            >
+              Activity
+            </Link>
 
             {/* Stellar Wallet Connect */}
             <WalletConnectButton onAddressSelect={(addr) => setRecipient(addr)} />
