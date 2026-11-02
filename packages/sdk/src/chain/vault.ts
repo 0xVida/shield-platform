@@ -52,6 +52,8 @@ export interface WithdrawParams {
    * `recipient`.
    */
   source?: string
+  /** The batch's funder: batch ids are per funder, so a batch is (funder, batchId). */
+  funder: string
   batchId: bigint
   /** Withdraw proof for the public inputs [root, nullifier, recipient, amount]. */
   proof: Uint8Array
@@ -80,10 +82,13 @@ export type TransactionOutcome =
 export class ShieldVaultClient {
   constructor(private readonly connection: VaultConnection) {}
 
-  /** Returns the batch, or undefined if no batch has this id. */
-  async getBatch(batchId: bigint): Promise<VaultBatch | undefined> {
+  /** Returns `funder`'s batch with this id, or undefined if there's none. */
+  async getBatch(
+    funder: string,
+    batchId: bigint
+  ): Promise<VaultBatch | undefined> {
     assertBatchId(batchId)
-    const tx = await this.client().get_batch({ batch_id: batchId })
+    const tx = await this.client().get_batch({ funder, batch_id: batchId })
     const batch = tx.result
     if (!batch) return undefined
     return {
@@ -94,10 +99,15 @@ export class ShieldVaultClient {
     }
   }
 
-  /** True if `nullifier` has already been used to claim from this batch. */
-  async isNullifierUsed(batchId: bigint, nullifier: bigint): Promise<boolean> {
+  /** True if `nullifier` has already been used to claim from `funder`'s batch. */
+  async isNullifierUsed(
+    funder: string,
+    batchId: bigint,
+    nullifier: bigint
+  ): Promise<boolean> {
     assertBatchId(batchId)
     const tx = await this.client().is_nullifier_used({
+      funder,
       batch_id: batchId,
       nullifier: fieldToBytes32(nullifier),
     })
@@ -126,6 +136,7 @@ export class ShieldVaultClient {
     assertBatchId(params.batchId)
     assertAmount(params.amount)
     const tx = await this.client(params.source ?? params.recipient).withdraw({
+      funder: params.funder,
       batch_id: params.batchId,
       proof: params.proof,
       nullifier: fieldToBytes32(params.nullifier),

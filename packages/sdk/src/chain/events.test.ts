@@ -4,7 +4,8 @@ import { nativeToScVal, rpc } from "@stellar/stellar-sdk"
 import { parseVaultEvent } from "./events"
 import { Client } from "./vault-bindings"
 
-// A real getEvents response from testnet: one fund_batch and one withdraw
+// A real getEvents response from testnet, from a vault with per-funder batch ids
+// (ADR 0003): one fund_batch and one withdraw
 const fixture = await Bun.file(
   new URL("./fixtures/vault-events.testnet.json", import.meta.url)
 ).json()
@@ -13,7 +14,8 @@ const [funded, withdrawn] = events as [
   rpc.Api.EventResponse,
   rpc.Api.EventResponse,
 ]
-const VAULT = "CB6RKTUOZVQKEKFMJFIKVM4C7JS7VRVDYK3IBQSW5GKBOSOEYXVZMFRK"
+const VAULT = "CBPGGE6ESRHJQZAKEDFRTLEULS3ZVYEL5O7FFSC6OL46GUO3R4UWH3GX"
+const FUNDER = "GDJNT7ZRFEV3AUNHBE7B4VVAO2N4W23AND2FMYOZXZRFYW3FMUJDAKFC"
 
 // Reading the spec makes no network call; the bindings only need a valid URL
 const spec = new Client({
@@ -29,12 +31,12 @@ describe("parseVaultEvent", () => {
       type: "funded",
       contractId: VAULT,
       txHash: fixture.fundTx,
-      ledger: 5476023,
-      ledgerClosedAt: "2026-10-30T23:42:35Z",
-      batchId: 1793403748164n,
-      funder: "GBGTYDVZL6Z4EL4ZTLY3LIYTBZQWMIL3FHJY5PJV4E6EFJ45HY4VBKZ2",
+      ledger: 5511212,
+      ledgerClosedAt: "2026-11-02T00:35:00Z",
+      batchId: 1793579695998n,
+      funder: FUNDER,
       token: "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
-      root: 0x144ce6f6fa61eb3a34aeba1cc4942b430fbe088c8673354c5de21531aa298491n,
+      root: 0x1234n << 200n,
       total: 45_000_000n,
     })
     expect(event?.id).toBe(funded.id)
@@ -46,11 +48,11 @@ describe("parseVaultEvent", () => {
       type: "withdrawn",
       contractId: VAULT,
       txHash: fixture.withdrawTx,
-      ledger: 5476025,
-      batchId: 1793403748164n,
-      nullifier:
-        0x10635507b6b3fa21f7996693cb27dee3ccd38ba429c742cec70346b8af52ff57n,
-      recipient: "GCJA22K2FAGFI3T3SIZATC5RFG3Z32PSNZPR7GC55JXFK556UL4IN2FC",
+      ledger: 5511213,
+      funder: FUNDER,
+      batchId: 1793579695998n,
+      nullifier: 0x5678n << 200n,
+      recipient: "GBA5EXJ3SONAQUACI73DG2BPJZY6TFK2HT5ZCOVWJWZZROFICBDE3YGS",
       amount: 25_000_000n,
     })
   })
@@ -58,10 +60,12 @@ describe("parseVaultEvent", () => {
   test("skips an event this code doesn't know, e.g. from a newer vault", () => {
     const unknown = {
       ...funded,
+      // Same shape as a real event (shield, name, funder, batch id), unknown name
       topic: [
         funded.topic[0]!,
         nativeToScVal("upgraded", { type: "symbol" }),
         funded.topic[2]!,
+        funded.topic[3]!,
       ],
     }
     expect(parseVaultEvent(spec, unknown)).toBeUndefined()
