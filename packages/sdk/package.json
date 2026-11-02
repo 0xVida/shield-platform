@@ -11,7 +11,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@stellar/stellar-sdk": "17.2.1",
+    "@stellar/stellar-sdk": "17.3.0",
     "poseidon-lite": "0.3.0",
     "snarkjs": "^0.7.6"
   },
