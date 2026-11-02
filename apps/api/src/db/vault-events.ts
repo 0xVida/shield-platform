@@ -48,7 +48,10 @@ export interface VaultEventStore {
 export type ActivityQuery = {
   contractId: string
   batchId?: bigint
-  /** Only events with this funder or recipient: Stellar addresses, public on-chain. */
+  /**
+   * Only events with this funder or recipient: Stellar addresses, public on-chain.
+   * A funder's address matches its fundings and the claims paid from its batches.
+   */
   address?: string
   type?: VaultEvent["type"]
   /** Only events older than this event id, to page on from a previous list. */
@@ -65,21 +68,18 @@ type EventDoc = {
   ledger: number
   ledgerClosedAt: Date
   txHash: string
+  /** A batch is (funder, batchId): batch ids are per funder. */
+  funder: string
   batchId: string
 } & (
-  | {
-      type: "funded"
-      funder: string
-      token: string
-      root: string
-      total: string
-    }
+  | { type: "funded"; token: string; root: string; total: string }
   | { type: "withdrawn"; nullifier: string; recipient: string; amount: string }
 )
 
 type NullifierDoc = {
   _id: string
   contractId: string
+  funder: string
   batchId: string
   nullifier: string
   ledger: number
@@ -119,8 +119,9 @@ export class MongoVaultEventStore implements VaultEventStore {
       await insertNew(
         this.nullifiers,
         withdrawals.map((event) => ({
-          _id: `${event.contractId}/${event.batchId}/${event.nullifier}`,
+          _id: `${event.contractId}/${event.funder}/${event.batchId}/${event.nullifier}`,
           contractId: event.contractId,
+          funder: event.funder,
           batchId: event.batchId.toString(),
           nullifier: event.nullifier.toString(),
           ledger: event.ledger,
@@ -174,13 +175,13 @@ function toEventDoc(event: VaultEvent): EventDoc {
     ledger: event.ledger,
     ledgerClosedAt: new Date(event.ledgerClosedAt),
     txHash: event.txHash,
+    funder: event.funder,
     batchId: event.batchId.toString(),
   }
   return event.type === "funded"
     ? {
         ...base,
         type: "funded",
-        funder: event.funder,
         token: event.token,
         root: event.root.toString(),
         total: event.total.toString(),
@@ -202,13 +203,13 @@ function fromEventDoc(doc: EventDoc): VaultEvent {
     // As the RPC writes it: whole seconds, without ".000"
     ledgerClosedAt: doc.ledgerClosedAt.toISOString().replace(".000Z", "Z"),
     txHash: doc.txHash,
+    funder: doc.funder,
     batchId: BigInt(doc.batchId),
   }
   return doc.type === "funded"
     ? {
         ...meta,
         type: "funded",
-        funder: doc.funder,
         token: doc.token,
         root: BigInt(doc.root),
         total: BigInt(doc.total),

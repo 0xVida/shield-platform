@@ -36,6 +36,7 @@ const withdrawnEvent: VaultEvent = {
   ledger: 5476025,
   ledgerClosedAt: "2026-10-30T23:42:45Z",
   txHash: "f66ae8f9",
+  funder: "GFUNDER",
   batchId: (1n << 64n) - 1n,
   nullifier: FIELD + 1n,
   recipient: "GRECIPIENT",
@@ -86,6 +87,7 @@ describe.skipIf(!uri)("MongoVaultEventStore", () => {
     expect(nullifiers).toMatchObject([
       {
         contractId: VAULT,
+        funder: "GFUNDER",
         batchId: "18446744073709551615",
         nullifier: (FIELD + 1n).toString(),
         ledger: 5476025,

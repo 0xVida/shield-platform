@@ -8,6 +8,7 @@ import { MemoryBatchStore } from "../db/memory-batches"
 import type { VaultReader } from "./batches"
 
 const CLAIM_DATA_KEY = Buffer.alloc(32, 8)
+const FUNDER = "GBGTYDVZL6Z4EL4ZTLY3LIYTBZQWMIL3FHJY5PJV4E6EFJ45HY4VBKZ2"
 
 function setup(vault?: VaultReader) {
   const store = new MemoryBatchStore()
@@ -32,18 +33,20 @@ async function createBatch(app: ReturnType<typeof setup>["app"]) {
 async function fund(store: MemoryBatchStore, id: bigint) {
   await store.setStatus(id, "created", "proving")
   await store.setStatus(id, "proving", "proved", { proof: "0x00" })
-  await store.setStatus(id, "proved", "funded", { fundedAt: new Date() })
+  await store.setStatus(id, "proved", "funded", {
+    funder: FUNDER,
+    fundedAt: new Date(),
+  })
 }
 
 describe("GET /v1/batches/:batchId: claim progress", () => {
   test("shows how much of a funded batch has been claimed, from the vault", async () => {
+    const asked: [string, bigint][] = []
     const vault: VaultReader = {
-      getBatch: async (): Promise<VaultBatch> => ({
-        root: 1n,
-        token: "C",
-        total: 500n,
-        withdrawn: 200n,
-      }),
+      getBatch: async (funder, batchId): Promise<VaultBatch> => {
+        asked.push([funder, batchId])
+        return { root: 1n, token: "C", total: 500n, withdrawn: 200n }
+      },
     }
     const { app, store } = setup(vault)
     const id = await createBatch(app)
@@ -52,6 +55,8 @@ describe("GET /v1/batches/:batchId: claim progress", () => {
     const res = await request(app).get(`/v1/batches/${id}`)
     expect(res.body.status).toBe("funded")
     expect(res.body.claims).toEqual({ withdrawn: "200", remaining: "300" })
+    // Batch ids are per funder: it read the funder's batch
+    expect(asked).toEqual([[FUNDER, id]])
   })
 
   test("shows claims as null when the vault can't be read, and still answers", async () => {

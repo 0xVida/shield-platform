@@ -1,3 +1,4 @@
+import { StrKey } from "@stellar/stellar-sdk"
 import { Router } from "express"
 import { z } from "zod"
 import { ShieldVaultClient } from "@workspace/sdk/chain"
@@ -17,6 +18,13 @@ export type ClaimRouterDeps = {
 }
 
 const CheckClaimSchema = z.object({
+  // Batch ids are per funder, so a batch is (funder, batchId)
+  funder: z
+    .string()
+    .refine(
+      (a) => StrKey.isValidEd25519PublicKey(a) || StrKey.isValidContract(a),
+      "Must be a Stellar address (G... or C...)"
+    ),
   batchId: z.coerce.bigint(),
   nullifier: z
     .string()
@@ -60,10 +68,10 @@ export function claimRouter(depsOrVault?: ClaimRouterDeps | ShieldVaultClient): 
   router.post(
     "/v1/claims/check",
     validated({ body: CheckClaimSchema }, async ({ body }, _req, res) => {
-      const { batchId, nullifier, recipient } = body
+      const { funder, batchId, nullifier, recipient } = body
 
       // 1. Check if the batch exists in the vault
-      const batch = await client.getBatch(batchId)
+      const batch = await client.getBatch(funder, batchId)
       if (!batch) {
         throw new HttpError(404, "BATCH_NOT_FOUND", `Batch ${batchId} was not found on-chain`)
       }
@@ -75,7 +83,7 @@ export function claimRouter(depsOrVault?: ClaimRouterDeps | ShieldVaultClient): 
       const nullifierBigInt = BigInt("0x" + cleanNullifier)
 
       // 3. Check if nullifier has already been used
-      const isSpent = await client.isNullifierUsed(batchId, nullifierBigInt)
+      const isSpent = await client.isNullifierUsed(funder, batchId, nullifierBigInt)
 
       let recipientField: string | undefined
       if (recipient) {
@@ -140,11 +148,14 @@ export function claimRouter(depsOrVault?: ClaimRouterDeps | ShieldVaultClient): 
       const nullifierHex = "0x" + nullifier.toString(16).padStart(64, "0")
 
       // Check on-chain nullifier status if vault is reachable
+      // Only a funded batch has a funder, and only then can a nullifier be spent
       let isSpent = false
-      try {
-        isSpent = await client.isNullifierUsed(batchId, nullifier)
-      } catch {
-        // Fall back to unspent if RPC query fails
+      if (batch.funder) {
+        try {
+          isSpent = await client.isNullifierUsed(batch.funder, batchId, nullifier)
+        } catch {
+          // Fall back to unspent if RPC query fails
+        }
       }
 
       let recipientField: string | undefined

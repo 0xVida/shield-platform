@@ -20,11 +20,12 @@ const CHAIN = {
   VAULT_CONTRACT_ID: StrKey.encodeContract(Buffer.alloc(32, 3)),
 }
 
-/** A vault holding `onChain` for every batch id, or failing to answer. */
+/** A vault holding `onChain` under FUNDER (batch ids are per funder), or failing to answer. */
 function fakeVault(onChain: (batch: BatchRecord) => VaultBatch | undefined) {
   let batch: BatchRecord | undefined
   const reader: VaultReader = {
-    getBatch: async () => (batch ? onChain(batch) : undefined),
+    getBatch: async (funder) =>
+      batch && funder === FUNDER ? onChain(batch) : undefined,
   }
   return { reader, holds: (b: BatchRecord) => (batch = b) }
 }
@@ -84,6 +85,20 @@ describe("POST /v1/batches/:batchId/funding", () => {
     })
   })
 
+  test("checks the reported funder's batch: another funder's id isn't this batch", async () => {
+    const vault = fakeVault(funded)
+    const s = setup(vault.reader)
+    const batch = await provedBatch(s)
+    vault.holds(batch)
+
+    const res = await request(s.app)
+      .post(`/v1/batches/${batch.batchId}/funding`)
+      .send({ ...report, funder: Keypair.random().publicKey() })
+    expect(res.status).toBe(409)
+    expect(res.body.error.code).toBe("not_funded")
+    expect(s.store.batches.get(batch.batchId)?.status).toBe("proved")
+  })
+
   test("waits for the vault: 409 while it has no batch with this id", async () => {
     const s = setup(fakeVault(funded).reader)
     const batch = await provedBatch(s)
@@ -96,9 +111,9 @@ describe("POST /v1/batches/:batchId/funding", () => {
     expect(s.store.batches.get(batch.batchId)?.status).toBe("proved")
   })
 
-  test("refuses a vault batch that isn't this one: another funder took the id", async () => {
+  test("refuses a vault batch that isn't this one: another root, total or token", async () => {
     const mismatches: ((b: BatchRecord) => VaultBatch)[] = [
-      // Same root and total in a token the attacker minted: a replayed proof
+      // Same root and total in another token, e.g. the funder reported the wrong one
       (b) => ({ ...funded(b), token: OTHER_TOKEN }),
       (b) => ({ ...funded(b), root: b.root + 1n }),
       (b) => ({ ...funded(b), total: b.total + 1n }),

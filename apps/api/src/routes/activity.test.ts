@@ -35,6 +35,7 @@ const withdrawnEvent: VaultEvent = {
   ledger: 5476025,
   ledgerClosedAt: "2026-10-30T23:42:45Z",
   txHash: hash(2),
+  funder: FUNDER,
   batchId: 1793403748164n,
   nullifier: (1n << 251n) + 2n,
   recipient: ALICE,
@@ -75,6 +76,7 @@ describe("GET /v1/activity", () => {
         ledger: 5476025,
         ledgerClosedAt: "2026-10-30T23:42:45Z",
         txHash: hash(2),
+        funder: FUNDER,
         batchId: "1793403748164",
         nullifier: ((1n << 251n) + 2n).toString(),
         recipient: ALICE,
@@ -117,7 +119,7 @@ describe("GET /v1/activity", () => {
       )
     expect(await ids("type=funded")).toEqual([id(1)])
     expect(await ids(`address=${ALICE}`)).toEqual([id(2)])
-    expect(await ids(`address=${FUNDER}`)).toEqual([id(1)])
+    expect(await ids(`address=${FUNDER}`)).toEqual([id(2), id(1)])
     expect(await ids("batchId=1793403748164")).toEqual([id(2), id(1)])
     expect(await ids("batchId=99")).toEqual([])
   })
@@ -152,6 +154,7 @@ describe("GET /v1/activity", () => {
       [
         "amount",
         "batchId",
+        "funder",
         "id",
         "ledger",
         "ledgerClosedAt",

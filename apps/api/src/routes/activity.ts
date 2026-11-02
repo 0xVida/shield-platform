@@ -41,6 +41,8 @@ export type ActivityItem =
       ledger: number
       ledgerClosedAt: string
       txHash: string
+      /** The funder whose batch paid the claim. */
+      funder: string
       batchId: bigint
       nullifier: bigint
       recipient: string
@@ -190,13 +192,13 @@ function toItem(event: VaultEvent): ActivityItem {
     ledger: event.ledger,
     ledgerClosedAt: event.ledgerClosedAt,
     txHash: event.txHash,
+    funder: event.funder,
     batchId: event.batchId,
   }
   return event.type === "funded"
     ? {
         ...base,
         type: "funded",
-        funder: event.funder,
         token: event.token,
         root: event.root,
         total: event.total,

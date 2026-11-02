@@ -175,7 +175,9 @@ export function batchesRouter({
         }
         const detail: BatchDetail = summary(batch)
         if (batch.status === "funded") {
-          detail.claims = await claimProgress(vault, params.batchId, req.log)
+          detail.claims = batch.funder
+            ? await claimProgress(vault, batch.funder, params.batchId, req.log)
+            : null
         }
         res.json(detail)
       }
@@ -219,8 +221,9 @@ export function batchesRouter({
 
   // Step 3 of the end-to-end flow. The disburser's wallet sends fund_batch, built
   // with Person 3's ShieldVaultClient, and reports it here. The batch counts as
-  // funded once the vault holds this batch's root and total in the reported token:
-  // a vault batch with another token means someone else registered the id first.
+  // funded once the vault holds this batch's root and total in the reported token,
+  // under the reported funder: batch ids are per funder (ADR 0003), so nobody else
+  // can register this funder's id first.
   router.post(
     "/batches/:batchId/funding",
     validated(
@@ -247,7 +250,7 @@ export function batchesRouter({
 
         let onChain: VaultBatch | undefined
         try {
-          onChain = await vault.getBatch(params.batchId)
+          onChain = await vault.getBatch(body.funder, params.batchId)
         } catch (err) {
           req.log.warn({ err }, "could not read the vault")
           throw new HttpError(502, "chain_error", "Couldn't read the vault")
@@ -256,7 +259,7 @@ export function batchesRouter({
           throw new HttpError(
             409,
             "not_funded",
-            "The vault has no batch with this id yet"
+            "The vault has no batch with this id from this funder yet"
           )
         }
         if (
@@ -267,7 +270,7 @@ export function batchesRouter({
           throw new HttpError(
             409,
             "funding_mismatch",
-            "The vault's batch with this id doesn't match this batch: another funder may have registered the id first"
+            "The funder's vault batch with this id doesn't match this batch"
           )
         }
 
@@ -308,12 +311,13 @@ function summary({ depth: _, ...batch }: BatchRecord): BatchSummary {
  */
 async function claimProgress(
   vault: VaultReader | undefined,
+  funder: string,
   batchId: bigint,
   log: Logger
 ): Promise<ClaimProgress | null> {
   if (!vault) return null
   try {
-    const onChain = await vault.getBatch(batchId)
+    const onChain = await vault.getBatch(funder, batchId)
     if (!onChain) return null
     return {
       withdrawn: onChain.withdrawn,

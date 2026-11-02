@@ -10,7 +10,7 @@ import type {
 export class MemoryVaultEventStore implements VaultEventStore {
   /** Saved events, by `${contractId}/${id}`. */
   readonly events = new Map<string, VaultEvent>()
-  /** Spent nullifiers, as `${contractId}/${batchId}/${nullifier}`. */
+  /** Spent nullifiers, as `${contractId}/${funder}/${batchId}/${nullifier}`. */
   readonly nullifiers = new Set<string>()
   readonly states = new Map<string, IndexerState>()
 
@@ -20,7 +20,7 @@ export class MemoryVaultEventStore implements VaultEventStore {
       if (!this.events.has(key)) this.events.set(key, event)
       if (event.type === "withdrawn") {
         this.nullifiers.add(
-          `${event.contractId}/${event.batchId}/${event.nullifier}`
+          `${event.contractId}/${event.funder}/${event.batchId}/${event.nullifier}`
         )
       }
     }
@@ -35,8 +35,8 @@ export class MemoryVaultEventStore implements VaultEventStore {
           (query.type === undefined || event.type === query.type) &&
           (query.before === undefined || event.id < query.before) &&
           (query.address === undefined ||
-            (event.type === "funded" ? event.funder : event.recipient) ===
-              query.address)
+            event.funder === query.address ||
+            (event.type === "withdrawn" && event.recipient === query.address))
       )
       .sort((a, b) => (a.id < b.id ? 1 : -1))
       .slice(0, query.limit)

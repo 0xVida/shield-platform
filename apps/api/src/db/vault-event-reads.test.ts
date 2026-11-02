@@ -17,11 +17,17 @@ const OTHER_VAULT = "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
 const ALICE = "GALICE"
 const BOB = "GBOB"
 const FUNDER = "GFUNDER"
+const OTHER_FUNDER = "GOTHERFUNDER"
 
 /** An event id as the RPC writes them: zero-padded, so they sort like the events. */
 const id = (n: number) => `${String(n).padStart(19, "0")}-0000000001`
 
-function funded(n: number, batchId: bigint, contractId = VAULT): VaultEvent {
+function funded(
+  n: number,
+  batchId: bigint,
+  funder = FUNDER,
+  contractId = VAULT
+): VaultEvent {
   return {
     type: "funded",
     id: id(n),
@@ -30,14 +36,19 @@ function funded(n: number, batchId: bigint, contractId = VAULT): VaultEvent {
     ledgerClosedAt: "2026-10-30T23:42:35Z",
     txHash: `tx${n}`,
     batchId,
-    funder: FUNDER,
+    funder,
     token: "CTOKEN",
     root: (1n << 250n) + BigInt(n),
     total: 1_000_000n,
   }
 }
 
-function withdrawn(n: number, batchId: bigint, recipient: string): VaultEvent {
+function withdrawn(
+  n: number,
+  batchId: bigint,
+  recipient: string,
+  funder = FUNDER
+): VaultEvent {
   return {
     type: "withdrawn",
     id: id(n),
@@ -45,6 +56,7 @@ function withdrawn(n: number, batchId: bigint, recipient: string): VaultEvent {
     ledger: 1000 + n,
     ledgerClosedAt: "2026-10-30T23:42:45Z",
     txHash: `tx${n}`,
+    funder,
     batchId,
     nullifier: (1n << 251n) + BigInt(n),
     recipient,
@@ -56,9 +68,9 @@ const events: VaultEvent[] = [
   funded(1, 1n),
   withdrawn(2, 1n, ALICE),
   withdrawn(3, 1n, BOB),
-  funded(4, 2n),
-  withdrawn(5, 2n, ALICE),
-  funded(6, 3n, OTHER_VAULT),
+  funded(4, 2n, OTHER_FUNDER),
+  withdrawn(5, 2n, ALICE, OTHER_FUNDER),
+  funded(6, 3n, FUNDER, OTHER_VAULT),
 ]
 
 const ids = (list: VaultEvent[]) => list.map((event) => event.id)
@@ -89,9 +101,13 @@ function readTests(makeStore: () => Promise<VaultEventStore>) {
     expect(
       ids(await store.list({ contractId: VAULT, address: ALICE, limit }))
     ).toEqual([id(5), id(2)])
+    // A funder's address: its fundings and the claims paid from its batches
     expect(
       ids(await store.list({ contractId: VAULT, address: FUNDER, limit }))
-    ).toEqual([id(4), id(1)])
+    ).toEqual([id(3), id(2), id(1)])
+    expect(
+      ids(await store.list({ contractId: VAULT, address: OTHER_FUNDER, limit }))
+    ).toEqual([id(5), id(4)])
     expect(
       ids(
         await store.list({
