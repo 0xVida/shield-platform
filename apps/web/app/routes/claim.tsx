@@ -126,7 +126,7 @@ export default function ClaimPage() {
     api
       .config()
       .then((config) => config.vault && setVault(config.vault))
-      .catch(() => {})
+      .catch(() => { })
   }, [])
   const txLink = (hash: string) => explorerUrl(vault.networkPassphrase, "tx", hash)
 
@@ -173,7 +173,7 @@ export default function ClaimPage() {
       console.warn("Could not retrieve claim from API:", err)
       setError(
         err?.message ||
-          "Could not retrieve allocation. You can use manual entry or demo data."
+        "Could not retrieve allocation. You can use manual entry or demo data."
       )
     } finally {
       setIsLookingUp(false)
@@ -246,7 +246,7 @@ export default function ClaimPage() {
     if (!funder) {
       setError(
         "This claim doesn't say who funded the batch: batch ids are per funder. " +
-          "Look the claim up again, or enter the batch's funder in manual entry."
+        "Look the claim up again, or enter the batch's funder in manual entry."
       )
       return
     }
@@ -376,10 +376,6 @@ export default function ClaimPage() {
       <main className="max-w-3xl mx-auto px-4 py-12">
         {/* Title & Subtitle */}
         <div className="text-center mb-10">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-neutral-900 border border-neutral-800 text-neutral-300 text-xs font-medium mb-3">
-            <Sparkle size={14} className="text-emerald-400" />
-            Person 2 Delivery: Recipient Claim & Prover
-          </div>
           <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-white mb-2">
             Confidential Claim Portal
           </h1>
@@ -404,13 +400,12 @@ export default function ClaimPage() {
               <div
                 key={s.num}
                 onClick={() => isCompleted && setStep(s.num as any)}
-                className={`p-3 rounded-xl border text-center transition-all ${
-                  isCompleted
+                className={`p-3 rounded-xl border text-center transition-all ${isCompleted
                     ? "bg-neutral-900/60 border-emerald-500/40 text-emerald-400 cursor-pointer"
                     : isActive
                       ? "bg-neutral-900 border-emerald-500 text-white shadow-lg shadow-emerald-950/40"
                       : "bg-neutral-900/20 border-neutral-800/60 text-neutral-500"
-                }`}
+                  }`}
               >
                 <div className="flex items-center justify-center gap-1.5 mb-1">
                   <Icon size={16} weight={isActive ? "duotone" : "regular"} />
@@ -851,37 +846,37 @@ export default function ClaimPage() {
                   onCancel={() => setReview(null)}
                 />
               ) : (
-              <div className="pt-2 flex justify-between items-center">
-                <Button
-                  variant="outline"
-                  onClick={() => setStep(2)}
-                  className="border-neutral-800 text-neutral-300 hover:bg-neutral-800 cursor-pointer"
-                >
-                  Back
-                </Button>
-                <Button
-                  disabled={isSubmitting || !walletAddress}
-                  onClick={handleReview}
-                  className="bg-emerald-500 hover:bg-emerald-400 text-neutral-950 font-semibold px-5 flex items-center gap-2 cursor-pointer disabled:opacity-50"
-                >
-                  {isSubmitting ? (
-                    <>
-                      <ArrowsClockwise size={16} className="animate-spin" />
-                      {submitStage ? stageLabel(submitStage) : "Preparing your claim..."}
-                    </>
-                  ) : !walletAddress ? (
-                    <>
-                      <Wallet size={16} />
-                      Connect Wallet to Claim
-                    </>
-                  ) : (
-                    <>
-                      <CheckCircle size={16} />
-                      Review Claim
-                    </>
-                  )}
-                </Button>
-              </div>
+                <div className="pt-2 flex justify-between items-center">
+                  <Button
+                    variant="outline"
+                    onClick={() => setStep(2)}
+                    className="border-neutral-800 text-neutral-300 hover:bg-neutral-800 cursor-pointer"
+                  >
+                    Back
+                  </Button>
+                  <Button
+                    disabled={isSubmitting || !walletAddress}
+                    onClick={handleReview}
+                    className="bg-emerald-500 hover:bg-emerald-400 text-neutral-950 font-semibold px-5 flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                  >
+                    {isSubmitting ? (
+                      <>
+                        <ArrowsClockwise size={16} className="animate-spin" />
+                        {submitStage ? stageLabel(submitStage) : "Preparing your claim..."}
+                      </>
+                    ) : !walletAddress ? (
+                      <>
+                        <Wallet size={16} />
+                        Connect Wallet to Claim
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle size={16} />
+                        Review Claim
+                      </>
+                    )}
+                  </Button>
+                </div>
               )}
             </div>
           )}
