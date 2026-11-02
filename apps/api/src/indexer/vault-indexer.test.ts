@@ -165,7 +165,7 @@ describe("VaultIndexer.poll", () => {
     expect(store.events.size).toBe(1)
   })
 
-  test("saves each event and nullifier once, even when a page is read twice", async () => {
+  test("saves each event once, even when a page is read twice", async () => {
     const page = { events: [funded("e1", 600), withdrawn("e2", 610, 7n)] }
     const { source } = fakeSource({ oldestLedger: 500, latestLedger: 900 }, [
       page,
@@ -176,7 +176,6 @@ describe("VaultIndexer.poll", () => {
     await vaultIndexer.poll()
 
     expect(store.events.size).toBe(2)
-    expect([...store.nullifiers]).toEqual([`${VAULT}/GFUNDER/1/7`])
   })
 
   test("records a gap when the RPC dropped ledgers it hadn't read yet", async () => {

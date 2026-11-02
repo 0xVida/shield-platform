@@ -4,12 +4,12 @@ import {
   LockKey,
   Plus,
   Stack,
-  WarningCircle,
 } from "@phosphor-icons/react"
 
 import type { Route } from "./+types/batches"
 import { BatchStatusPill, STATUS_FILTERS } from "../components/batch-status"
-import { DisburseHeader } from "../components/disburse-header"
+import { AppHeader } from "../components/app-header"
+import { ErrorBox } from "../components/error-box"
 import { formatAmount } from "../lib/amount"
 import { api, type Batch } from "../lib/api"
 
@@ -32,7 +32,7 @@ export async function clientLoader({ request }: Route.ClientLoaderArgs) {
 export function HydrateFallback() {
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-100 antialiased">
-      <DisburseHeader />
+      <AppHeader />
       <p className="max-w-3xl mx-auto px-4 py-12 text-xs text-neutral-400">
         Loading batches...
       </p>
@@ -45,7 +45,7 @@ export default function Batches({ loaderData }: Route.ComponentProps) {
 
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-100 antialiased selection:bg-emerald-500/30 selection:text-emerald-300">
-      <DisburseHeader />
+      <AppHeader />
 
       <main className="max-w-3xl mx-auto px-4 py-12">
         {/* Title & Subtitle */}
@@ -93,13 +93,7 @@ export default function Batches({ loaderData }: Route.ComponentProps) {
         </div>
 
         {error ? (
-          <div className="p-4 rounded-xl bg-red-950/40 border border-red-800/60 text-red-300 text-xs flex items-start gap-3">
-            <WarningCircle size={18} className="shrink-0 mt-0.5 text-red-400" />
-            <div>
-              <span className="font-semibold block mb-0.5">Couldn't load batches</span>
-              {error}
-            </div>
-          </div>
+          <ErrorBox title="Couldn't load batches">{error}</ErrorBox>
         ) : batches.length === 0 ? (
           <div className="bg-neutral-900/80 border border-neutral-800/80 rounded-2xl p-10 text-center">
             <div className="w-12 h-12 bg-emerald-500/10 border border-emerald-500/30 rounded-xl flex items-center justify-center text-emerald-400 mx-auto mb-3">

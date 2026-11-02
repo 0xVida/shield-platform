@@ -21,7 +21,7 @@ shield-contracts' `circuits` after `pnpm build` there (it uses `test_conservatio
 | `src/config/env.ts` | Environment schema; invalid config fails the boot |
 | `src/routes/` | Routers. Feature routers mount under `/v1` |
 | `src/db/batches.ts` | Batch storage (`confidential_batches`, `confidential_allocations`) and claim-data encryption |
-| `src/db/vault-events.ts` | The vault's on-chain events (`vault_events`, `nullifiers_seen`) and the indexer's position (`indexer_state`). Only public on-chain data: claims are never matched to allocations |
+| `src/db/vault-events.ts` | The vault's on-chain events (`vault_events`) and the indexer's position (`indexer_state`). Only public on-chain data: claims are never matched to allocations |
 | `src/indexer/` | `VaultIndexer` copies the vault's events into MongoDB while the vault is configured, and records a gap if the RPC dropped ledgers before it read them |
 | `src/lib/validated.ts` | Typed request parsing for handlers |
 | `src/lib/encryption.ts` | AES-256-GCM, bound to a context so ciphertext can't move between records |

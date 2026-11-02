@@ -8,13 +8,13 @@ import {
   Plus,
   Receipt,
   Trash,
-  WarningCircle,
 } from "@phosphor-icons/react"
 import { Button } from "@workspace/ui/components/button"
 import { MAX_ALLOCATIONS, MAX_AMOUNT } from "@workspace/sdk"
 
 import type { Route } from "./+types/batch-new"
-import { DisburseHeader } from "../components/disburse-header"
+import { AppHeader } from "../components/app-header"
+import { ErrorBox } from "../components/error-box"
 import { formatAmount, parseAmount } from "../lib/amount"
 import { ApiError, api } from "../lib/api"
 import { parseRecipientsCsv, type RecipientRow } from "../lib/csv"
@@ -101,7 +101,7 @@ export default function NewBatch() {
 
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-100 antialiased selection:bg-emerald-500/30 selection:text-emerald-300">
-      <DisburseHeader />
+      <AppHeader />
 
       <main className="max-w-3xl mx-auto px-4 py-12">
         <Link
@@ -122,20 +122,15 @@ export default function NewBatch() {
           </p>
         </div>
 
-        <div className="bg-neutral-900/80 border border-neutral-800/80 rounded-2xl p-6 sm:p-8 backdrop-blur-xl shadow-2xl relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-72 h-72 bg-emerald-500/5 rounded-full blur-3xl pointer-events-none" />
+        <div className="bg-neutral-900/80 border border-neutral-800/80 rounded-2xl p-6 sm:p-8">
 
           {error && (
-            <div className="mb-6 p-4 rounded-xl bg-red-950/40 border border-red-800/60 text-red-300 text-xs flex items-start gap-3">
-              <WarningCircle size={18} className="shrink-0 mt-0.5 text-red-400" />
-              <div>
-                <span className="font-semibold block mb-0.5">Batch not created</span>
-                {error}
-              </div>
-            </div>
+            <ErrorBox title="Batch not created" className="mb-6">
+              {error}
+            </ErrorBox>
           )}
 
-          <div className="space-y-6 relative">
+          <div className="space-y-6">
             <div>
               <label htmlFor="name" className="block text-xs font-medium text-neutral-300 mb-1.5">
                 Batch name (optional)
@@ -174,20 +169,14 @@ export default function NewBatch() {
             </div>
 
             {csvErrors.length > 0 && (
-              <div className="p-4 rounded-xl bg-red-950/40 border border-red-800/60 text-red-300 text-xs flex items-start gap-3">
-                <WarningCircle size={18} className="shrink-0 mt-0.5 text-red-400" />
-                <div>
-                  <span className="font-semibold block mb-1">
-                    The CSV wasn't loaded. Fix these lines and upload it again:
-                  </span>
-                  <ul className="space-y-0.5">
-                    {csvErrors.slice(0, 8).map((e) => (
-                      <li key={e}>{e}</li>
-                    ))}
-                    {csvErrors.length > 8 && <li>…and {csvErrors.length - 8} more</li>}
-                  </ul>
-                </div>
-              </div>
+              <ErrorBox title="The CSV wasn't loaded. Fix these lines and upload it again:">
+                <ul className="space-y-0.5">
+                  {csvErrors.slice(0, 8).map((e) => (
+                    <li key={e}>{e}</li>
+                  ))}
+                  {csvErrors.length > 8 && <li>…and {csvErrors.length - 8} more</li>}
+                </ul>
+              </ErrorBox>
             )}
 
             <div className="space-y-2">

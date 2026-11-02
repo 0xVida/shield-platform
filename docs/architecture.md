@@ -76,8 +76,10 @@ All three components must match these exactly. Changes go through a decision rec
 - SDP's normal path queues direct payments via the Core Service and the Transaction
   Submission Service. Confidential claims need a **separate execution path**; a
   database flag alone isn't enough.
-- New tables (proposed): `confidential_batches`, `confidential_allocations`
-  (encrypted claim data, leaf index), and `nullifiers_seen` (mirror of on-chain state).
+- New tables: `confidential_batches`, `confidential_allocations` (encrypted claim
+  data, leaf index), and `vault_events` (the vault's public events, for history and
+  status). Spent nullifiers aren't mirrored: the vault is the only record of them,
+  and a copy could fall behind it.
 - Reuse SDP's wallet registration and SMS invitation flow to deliver claim data.
 
 ## Open decisions

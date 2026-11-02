@@ -11,7 +11,8 @@ import {
 import { Button } from "@workspace/ui/components/button"
 
 import type { Route } from "./+types/activity"
-import { DisburseHeader } from "../components/disburse-header"
+import { AppHeader } from "../components/app-header"
+import { ErrorBox } from "../components/error-box"
 import { useWallet } from "../context/wallet-context"
 import { activityRow, filtersFromSearch, historyWarning } from "../lib/activity"
 import { ApiError, api, type ActivityItem, type ActivityPage } from "../lib/api"
@@ -48,7 +49,7 @@ export async function clientLoader({ request }: Route.ClientLoaderArgs) {
 export function HydrateFallback() {
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-100 antialiased">
-      <DisburseHeader />
+      <AppHeader />
       <p className="mx-auto max-w-3xl px-4 py-12 text-xs text-neutral-400">
         Loading activity...
       </p>
@@ -111,7 +112,7 @@ export default function Activity({ loaderData }: Route.ComponentProps) {
 
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-100 antialiased selection:bg-emerald-500/30 selection:text-emerald-300">
-      <DisburseHeader />
+      <AppHeader />
 
       <main className="mx-auto max-w-3xl px-4 py-12">
         <div className="mb-10 text-center">
@@ -178,15 +179,7 @@ export default function Activity({ loaderData }: Route.ComponentProps) {
         )}
 
         {error ? (
-          <div className="flex items-start gap-3 rounded-xl border border-red-800/60 bg-red-950/40 p-4 text-xs text-red-300">
-            <WarningCircle size={18} className="mt-0.5 shrink-0 text-red-400" />
-            <div>
-              <span className="mb-0.5 block font-semibold">
-                Couldn't load activity
-              </span>
-              {error}
-            </div>
-          </div>
+          <ErrorBox title="Couldn't load activity">{error}</ErrorBox>
         ) : items.length === 0 ? (
           <div className="rounded-2xl border border-neutral-800/80 bg-neutral-900/80 p-10 text-center">
             <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl border border-emerald-500/30 bg-emerald-500/10 text-emerald-400">

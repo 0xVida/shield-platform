@@ -32,8 +32,8 @@ export type IndexerState = {
  */
 export interface VaultEventStore {
   /**
-   * Saves events, and records each withdrawal's nullifier as spent. Events already
-   * saved (the same id from the same vault) are skipped, so saving twice is safe.
+   * Saves events. Events already saved (the same id from the same vault) are
+   * skipped, so saving twice is safe.
    */
   save(events: VaultEvent[]): Promise<void>
   /** One vault's events, newest first, filtered and paged as `query` says. */
@@ -76,27 +76,18 @@ type EventDoc = {
   | { type: "withdrawn"; nullifier: string; recipient: string; amount: string }
 )
 
-type NullifierDoc = {
-  _id: string
-  contractId: string
-  funder: string
-  batchId: string
-  nullifier: string
-  ledger: number
-  txHash: string
-}
-
 type StateDoc = Omit<IndexerState, "contractId"> & { _id: string }
 
-/** VaultEventStore on `vault_events`, `nullifiers_seen` and `indexer_state`. */
+/**
+ * VaultEventStore on `vault_events` and `indexer_state`. Spent nullifiers aren't
+ * copied: the vault is the only record of them (`is_nullifier_used`).
+ */
 export class MongoVaultEventStore implements VaultEventStore {
   private readonly events: Collection<EventDoc>
-  private readonly nullifiers: Collection<NullifierDoc>
   private readonly states: Collection<StateDoc>
 
   constructor(db: Db) {
     this.events = db.collection<EventDoc>("vault_events")
-    this.nullifiers = db.collection<NullifierDoc>("nullifiers_seen")
     this.states = db.collection<StateDoc>("indexer_state")
   }
 
@@ -114,21 +105,6 @@ export class MongoVaultEventStore implements VaultEventStore {
   async save(events: VaultEvent[]): Promise<void> {
     if (events.length === 0) return
     await insertNew(this.events, events.map(toEventDoc))
-    const withdrawals = events.filter((event) => event.type === "withdrawn")
-    if (withdrawals.length > 0) {
-      await insertNew(
-        this.nullifiers,
-        withdrawals.map((event) => ({
-          _id: `${event.contractId}/${event.funder}/${event.batchId}/${event.nullifier}`,
-          contractId: event.contractId,
-          funder: event.funder,
-          batchId: event.batchId.toString(),
-          nullifier: event.nullifier.toString(),
-          ledger: event.ledger,
-          txHash: event.txHash,
-        }))
-      )
-    }
   }
 
   async list(query: ActivityQuery): Promise<VaultEvent[]> {

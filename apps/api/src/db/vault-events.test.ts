@@ -61,7 +61,7 @@ describe.skipIf(!uri)("MongoVaultEventStore", () => {
     await client.close()
   })
 
-  test("stores events with bigints intact, and each spent nullifier", async () => {
+  test("stores events with bigints intact", async () => {
     await store.save([fundedEvent, withdrawnEvent])
 
     const docs = await db
@@ -82,24 +82,12 @@ describe.skipIf(!uri)("MongoVaultEventStore", () => {
       },
     ])
     expect(docs[0]?.ledgerClosedAt).toEqual(new Date("2026-10-30T23:42:35Z"))
-
-    const nullifiers = await db.collection("nullifiers_seen").find().toArray()
-    expect(nullifiers).toMatchObject([
-      {
-        contractId: VAULT,
-        funder: "GFUNDER",
-        batchId: "18446744073709551615",
-        nullifier: (FIELD + 1n).toString(),
-        ledger: 5476025,
-      },
-    ])
   })
 
   test("saving the same events again changes nothing", async () => {
     await store.save([fundedEvent, withdrawnEvent])
     await store.save([withdrawnEvent])
     expect(await db.collection("vault_events").countDocuments()).toBe(2)
-    expect(await db.collection("nullifiers_seen").countDocuments()).toBe(1)
   })
 
   test("saves new events in a batch that also holds known ones", async () => {
@@ -110,7 +98,6 @@ describe.skipIf(!uri)("MongoVaultEventStore", () => {
     }
     await store.save([fundedEvent, later])
     expect(await db.collection("vault_events").countDocuments()).toBe(3)
-    expect(await db.collection("nullifiers_seen").countDocuments()).toBe(2)
   })
 
   test("keeps the indexer's state per vault", async () => {

@@ -10,19 +10,12 @@ import type {
 export class MemoryVaultEventStore implements VaultEventStore {
   /** Saved events, by `${contractId}/${id}`. */
   readonly events = new Map<string, VaultEvent>()
-  /** Spent nullifiers, as `${contractId}/${funder}/${batchId}/${nullifier}`. */
-  readonly nullifiers = new Set<string>()
   readonly states = new Map<string, IndexerState>()
 
   async save(events: VaultEvent[]): Promise<void> {
     for (const event of events) {
       const key = `${event.contractId}/${event.id}`
       if (!this.events.has(key)) this.events.set(key, event)
-      if (event.type === "withdrawn") {
-        this.nullifiers.add(
-          `${event.contractId}/${event.funder}/${event.batchId}/${event.nullifier}`
-        )
-      }
     }
   }
 
