@@ -24,15 +24,16 @@ Ownership is detailed in [team.md](team.md).
    the batch Merkle tree.
 2. **Prove conservation:** the disburser shows that the committed allocations sum
    to the total `T`. The mechanism is open (see D5).
-3. **Fund:** disburser calls `vault.fund_batch(batch_id, root, T, …)`. The vault
-   pulls `T` tokens and stores `{root, T, withdrawn = 0}`, plus whatever
-   conservation check D5 settles on.
+3. **Fund:** disburser calls `vault.fund_batch(funder, batch_id, token, root, T, proof)`.
+   The vault verifies the conservation proof, pulls `T` tokens and stores
+   `{root, token, T, withdrawn = 0}` under `(funder, batch_id)`: batch ids are per
+   funder (ADR 0003).
 4. **Distribute claim data:** each recipient privately receives
-   `{batch_id, amount, secret, leaf_index, merkle_path}` over the existing SDP
+   `{funder, batch_id, amount, secret, leaf_index, merkle_path}` over the existing SDP
    invitation / wallet channel.
 5. **Claim:** the recipient's wallet (or the demo UI) generates a withdraw proof
    using the SDK.
-6. **Withdraw:** `vault.withdraw(batch_id, proof, nullifier, recipient, amount_public…)`.
+6. **Withdraw:** `vault.withdraw(funder, batch_id, proof, nullifier, recipient, amount)`.
    The vault checks the root, checks the nullifier hasn't been used, verifies the
    proof, records the nullifier, and transfers the funds.
 7. **Off-ramp:** funds go out through the existing SDP wallet / SEP-24 rails.
@@ -46,11 +47,11 @@ All three components must match these exactly. Changes go through a decision rec
 | Field | BN254 scalar field |
 | Hash | Poseidon, **circomlib parameters**. The Soroban Poseidon host function must produce identical outputs; verify with shared test vectors before Phase 2. |
 | Commitment | `Poseidon(amount, secret, batch_id)`, implemented in `circuits/commitment.circom` (`AllocationCommitment`). `claim.circom` still has to adopt it. |
-| Nullifier | `Poseidon(TAG, secret, leafIndex)` with `TAG` = ASCII `"shieldzk.nullifier"` as a field element (domain separation from commitments). `leafIndex` is rebuilt in-circuit from `pathIndices`. Implemented in `circuits/nullifier.circom`; JS mirror in `circuits/lib/nullifier.js`. Scope: per batch; the vault stores `(batch_id, nullifier)` and rejects non-canonical values (≥ field modulus). |
+| Nullifier | `Poseidon(TAG, secret, leafIndex)` with `TAG` = ASCII `"shieldzk.nullifier"` as a field element (domain separation from commitments). `leafIndex` is rebuilt in-circuit from `pathIndices`. Implemented in `circuits/nullifier.circom`; JS mirror in `circuits/lib/nullifier.js`. Scope: per batch; the vault stores `(funder, batch_id, nullifier)` and rejects non-canonical values (≥ field modulus). |
 | Merkle tree | Binary Poseidon tree, one tree per batch, depth 10 (= 1024 recipients) (proposed). Empty leaves = 0, leaves in insertion order, root is one field element. |
 | Amount | Integer in token base units, range-checked to 64 bits in-circuit |
 | Recipient binding | Recipient is a public input, so a proof can't be front-run or redirected. Encoding (D4): `sha256(ScVal XDR of the address)` with the top 3 bits cleared (253 bits). Implemented in `circuits/lib/recipient.js` and the vault's `recipient_to_field`; both checked against `circuits/test-vectors/recipient.json`. |
-| Withdraw public inputs | `[root, nullifierHash, recipient, amount]`, in this order. `batch_id` is not a public input: the vault looks up the batch's stored root by `batch_id`. `amount` is public pending D1. |
+| Withdraw public inputs | `[root, nullifierHash, recipient, amount]`, in this order. `batch_id` and `funder` are not public inputs: the vault looks up the batch's stored root by `(funder, batch_id)`. `amount` is public (D1, option b). |
 | Conservation public inputs | TBD (depends on D5) |
 | Test vectors | `shield-contracts/circuits/test-vectors/*.json`, produced by Person 1 and used by everyone |
 
@@ -65,6 +66,7 @@ All three components must match these exactly. Changes go through a decision rec
 
 - **Vault:** `fund_batch`, `withdraw`, `get_batch`, `is_nullifier_used`.
   Invariant: `withdrawn ≤ total` for every batch.
+  Batches are identified by `(funder, batch_id)` (ADR 0003).
 - **Verifier:** Groth16 verification over BN254 using Soroban's native pairing host
   functions. Verifying keys for both circuits are stored at deploy time.
 - Phase 1 uses a mock verifier behind the same interface.
@@ -80,14 +82,16 @@ All three components must match these exactly. Changes go through a decision rec
 
 ## Open decisions
 
-- **D1. Withdrawal amount leakage.** A plain Soroban token transfer reveals the
-  amount and destination. Options:
+- **D1. Withdrawal amount leakage.** ✅ Decided for Phase 1: option (b), a public
+  payout amount. Privacy covers the allocation phase: the deposit hides what each
+  recipient gets, but each claim's amount and destination are visible on-chain.
+  It's what the circuits, vault and apps implement today; (a) or (c) would mean
+  redesigning the claim and conservation circuits. Revisit before mainnet.
+  A plain Soroban token transfer reveals the amount and destination. Options were:
   (a) fixed-denomination notes (an allocation is split into standard denominations);
   (b) a public payout amount, which limits privacy to the allocation phase and to
       linkage among claims of the same amount;
   (c) an additional confidential balance layer.
-  This affects the circuit, the contract and the API. It must be decided before
-  Phase 1 circuit work goes further.
 - **D2. Who holds recipient secrets** before claim (generated server-side and
   delivered encrypted, vs. derived on the recipient's device).
 - **D3. Trusted setup source:** which existing Powers of Tau file, and whether we run

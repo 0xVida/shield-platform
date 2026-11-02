@@ -6,4 +6,5 @@ export default [
   route("batches/new", "routes/batch-new.tsx"),
   route("batches/:batchId", "routes/batch.tsx"),
   route("claim", "routes/claim.tsx"),
+  route("activity", "routes/activity.tsx"),
 ] satisfies RouteConfig

@@ -28,6 +28,8 @@ export interface BatchFundedEvent extends VaultEventMeta {
 /** `Withdrawn`: withdraw paid out a claim and spent its nullifier. */
 export interface WithdrawnEvent extends VaultEventMeta {
   type: "withdrawn"
+  /** The batch's funder: a batch is (funder, batchId). */
+  funder: string
   batchId: bigint
   nullifier: bigint
   recipient: string
@@ -89,6 +91,7 @@ export function parseVaultEvent(
       return {
         ...meta,
         type: "withdrawn",
+        funder: data.funder,
         batchId: BigInt(data.batch_id),
         nullifier: bytes32ToField(data.nullifier),
         recipient: data.recipient,

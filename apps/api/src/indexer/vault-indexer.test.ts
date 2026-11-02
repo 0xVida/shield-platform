@@ -31,6 +31,7 @@ function withdrawn(id: string, ledger: number, nullifier: bigint): VaultEvent {
     ledger,
     ledgerClosedAt: "2026-10-30T23:42:45Z",
     txHash: `tx-${id}`,
+    funder: "GFUNDER",
     batchId: 1n,
     nullifier,
     recipient: "GRECIPIENT",
@@ -175,7 +176,7 @@ describe("VaultIndexer.poll", () => {
     await vaultIndexer.poll()
 
     expect(store.events.size).toBe(2)
-    expect([...store.nullifiers]).toEqual([`${VAULT}/1/7`])
+    expect([...store.nullifiers]).toEqual([`${VAULT}/GFUNDER/1/7`])
   })
 
   test("records a gap when the RPC dropped ledgers it hadn't read yet", async () => {

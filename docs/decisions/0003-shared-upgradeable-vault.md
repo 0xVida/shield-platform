@@ -1,9 +1,28 @@
 # 0003 — Shared, upgradeable vault
 
-- **Status:** Proposed
-- **Date:** 2026-10-26
+- **Status:** Part 1 (per-funder batch ids) accepted and implemented; part 2 (upgradeable vault) deferred
+- **Date:** 2026-10-26 (proposed), 2026-11-02 (part 1 accepted)
 - **Proposed by:** Person 3 ([@koxyG](https://github.com/koxyG))
 - **Affects:** ADR 0002 (batch ids), vault storage layout and constructor
+
+## Status update (2026-11-02)
+
+**Part 1, batch ids per funder: accepted and implemented** in shield-contracts and
+shield-platform (`feat/funder-scoped-batches` in both). Batches and nullifiers are
+keyed by `(funder, batch_id)`; `withdraw`, `get_batch` and `is_nullifier_used` take the
+funder, and `BatchFunded` and `Withdrawn` carry it as a topic. Tested end to end on
+testnet with a real claim proof: an attacker who registers the same id first, with
+the disburser's root and proof and a worthless token, now creates only their own
+batch; the disburser still funds the id, and claims on it pay the real token.
+
+The attack is worse than Context item 1 describes, as ADR 0002 points out: the
+attacker doesn't need a batch of their own, they can replay the disburser's own
+proof with a token they mint, so the id holds the disburser's root but pays junk.
+Part 1 closes that as well.
+
+**Part 2, the upgradeable vault: deferred.** Redeploying is acceptable on testnet,
+and an upgrade key is a custody decision for the whole team (see Consequences).
+Revisit before mainnet, with the multisig admin and a timelock or a freeze.
 
 ## Context
 

@@ -52,6 +52,8 @@ export interface WithdrawParams {
    * `recipient`.
    */
   source?: string
+  /** The batch's funder: batch ids are per funder, so a batch is (funder, batchId). */
+  funder: string
   batchId: bigint
   /** Withdraw proof for the public inputs [root, nullifier, recipient, amount]. */
   proof: Uint8Array
@@ -64,6 +66,11 @@ export interface WithdrawParams {
 /** A simulated vault call, ready to be signed and sent. */
 export type VaultTransaction = AssembledTransaction<Result<void>>
 
+/** A transaction's outcome, as the RPC reports it. */
+export type TransactionOutcome =
+  | { status: "SUCCESS" | "FAILED"; ledger: number; ledgerClosedAt: string }
+  | { status: "NOT_FOUND" }
+
 /**
  * Typed access to the ShieldVault contract.
  *
@@ -75,10 +82,13 @@ export type VaultTransaction = AssembledTransaction<Result<void>>
 export class ShieldVaultClient {
   constructor(private readonly connection: VaultConnection) {}
 
-  /** Returns the batch, or undefined if no batch has this id. */
-  async getBatch(batchId: bigint): Promise<VaultBatch | undefined> {
+  /** Returns `funder`'s batch with this id, or undefined if there's none. */
+  async getBatch(
+    funder: string,
+    batchId: bigint
+  ): Promise<VaultBatch | undefined> {
     assertBatchId(batchId)
-    const tx = await this.client().get_batch({ batch_id: batchId })
+    const tx = await this.client().get_batch({ funder, batch_id: batchId })
     const batch = tx.result
     if (!batch) return undefined
     return {
@@ -89,10 +99,15 @@ export class ShieldVaultClient {
     }
   }
 
-  /** True if `nullifier` has already been used to claim from this batch. */
-  async isNullifierUsed(batchId: bigint, nullifier: bigint): Promise<boolean> {
+  /** True if `nullifier` has already been used to claim from `funder`'s batch. */
+  async isNullifierUsed(
+    funder: string,
+    batchId: bigint,
+    nullifier: bigint
+  ): Promise<boolean> {
     assertBatchId(batchId)
     const tx = await this.client().is_nullifier_used({
+      funder,
       batch_id: batchId,
       nullifier: fieldToBytes32(nullifier),
     })
@@ -121,6 +136,7 @@ export class ShieldVaultClient {
     assertBatchId(params.batchId)
     assertAmount(params.amount)
     const tx = await this.client(params.source ?? params.recipient).withdraw({
+      funder: params.funder,
       batch_id: params.batchId,
       proof: params.proof,
       nullifier: fieldToBytes32(params.nullifier),
@@ -158,6 +174,26 @@ export class ShieldVaultClient {
       cursor: response.cursor,
       latestLedger: response.latestLedger,
       oldestLedger: response.oldestLedger,
+    }
+  }
+
+  /**
+   * A transaction's outcome, per the RPC. NOT_FOUND covers everything not in a
+   * ledger the RPC keeps: still pending, never sent, expired, or older than about a
+   * week. The RPC can't tell these apart.
+   */
+  async getTransaction(hash: string): Promise<TransactionOutcome> {
+    const response = await this.server().getTransaction(hash)
+    if (response.status === rpc.Api.GetTransactionStatus.NOT_FOUND) {
+      return { status: "NOT_FOUND" }
+    }
+    return {
+      status: response.status,
+      ledger: response.ledger,
+      // Whole seconds, written like the RPC writes events' ledgerClosedAt
+      ledgerClosedAt: new Date(response.createdAt * 1000)
+        .toISOString()
+        .replace(".000Z", "Z"),
     }
   }
 

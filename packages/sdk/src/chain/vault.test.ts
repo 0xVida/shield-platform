@@ -15,6 +15,7 @@ const vault = new ShieldVaultClient({
 const account = Keypair.random().publicKey()
 const proof = new Uint8Array(256)
 const withdraw = {
+  funder: account,
   batchId: 1n,
   proof,
   nullifier: 1n,
@@ -65,9 +66,9 @@ describe("ShieldVaultClient checks inputs before any network call", () => {
   })
 
   test("reads reject bad batch ids and nullifiers", async () => {
-    await expect(vault.getBatch(-1n)).rejects.toThrow(RangeError)
-    await expect(vault.isNullifierUsed(1n, FIELD_SIZE)).rejects.toThrow(
-      RangeError
-    )
+    await expect(vault.getBatch(account, -1n)).rejects.toThrow(RangeError)
+    await expect(
+      vault.isNullifierUsed(account, 1n, FIELD_SIZE)
+    ).rejects.toThrow(RangeError)
   })
 })

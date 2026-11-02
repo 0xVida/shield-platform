@@ -9,6 +9,7 @@ import { MongoBatchStore } from "./db/batches"
 import { connectMongo } from "./db/mongo"
 import { MongoVaultEventStore } from "./db/vault-events"
 import { VaultIndexer } from "./indexer/vault-indexer"
+import type { ActivitySource } from "./routes/activity"
 import { createLogger } from "./lib/logger"
 import {
   CONSERVATION_CIRCUIT,
@@ -73,6 +74,7 @@ if (circuitsDir && claimDataKey) {
 const connection = vaultConnection(config)
 const vault = connection ? new ShieldVaultClient(connection) : undefined
 let indexer: VaultIndexer | undefined
+let activity: ActivitySource | undefined
 if (connection && vault) {
   const vaultEvents = new MongoVaultEventStore(mongo.db)
   await vaultEvents.ensureIndexes().catch((err: unknown) => {
@@ -89,6 +91,11 @@ if (connection && vault) {
   })
   indexer.start()
   logger.info({ contractId: connection.contractId }, "indexing vault events")
+  activity = {
+    contractId: connection.contractId,
+    events: vaultEvents,
+    chain: vault,
+  }
 } else {
   logger.warn(
     "funding can't be confirmed and vault events aren't indexed: the vault isn't configured"
@@ -106,6 +113,7 @@ const app = createApp({
   batches,
   proofs,
   vault,
+  activity,
 })
 
 const server = createServer(app)

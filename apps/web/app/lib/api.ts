@@ -25,6 +25,52 @@ export type Batch = {
   claims?: { withdrawn: string; remaining: string } | null
 }
 
+/** A vault event, as GET /v1/activity and GET /v1/tx/:hash return it. */
+export type ActivityItem = {
+  id: string
+  ledger: number
+  ledgerClosedAt: string
+  txHash: string
+  batchId: string
+} & (
+  | {
+      type: "funded"
+      funder: string
+      token: string
+      root: string
+      total: string
+    }
+  | {
+      type: "withdrawn"
+      /** The funder whose batch paid the claim. */
+      funder: string
+      nullifier: string
+      recipient: string
+      amount: string
+    }
+)
+
+/** GET /v1/activity: a page of events, and how complete the history is. */
+export type ActivityPage = {
+  items: ActivityItem[]
+  /** Pass as `before` for the next page; null on the last page. */
+  next: string | null
+  /** Null before the indexer's first poll. Gaps are ledgers it never read. */
+  indexer: {
+    ledger: number
+    gaps: { fromLedger: number; toLedger: number; detectedAt: string }[]
+  } | null
+}
+
+/** GET /v1/tx/:hash. */
+export type TransactionStatus = {
+  hash: string
+  status: "confirmed" | "failed" | "not_found"
+  ledger?: number
+  ledgerClosedAt?: string
+  events: ActivityItem[]
+}
+
 /** The vault to fund, as `@workspace/sdk/chain`'s ShieldVaultClient takes it. */
 export type VaultConnection = {
   contractId: string
@@ -103,13 +149,33 @@ export const api = {
 
   config: () => request<{ vault: VaultConnection | null }>("/v1/config"),
 
+  /** A transaction's status, from the indexed vault events or the RPC. */
+  tx: (hash: string) => request<TransactionStatus>(`/v1/tx/${hash}`),
+
+  /** The vault's on-chain activity, newest first. */
+  activity: (query: {
+    type?: ActivityItem["type"]
+    address?: string
+    batchId?: string
+    before?: string
+    limit?: number
+  }) => {
+    const params = new URLSearchParams(
+      Object.entries(query)
+        .filter(([, value]) => value !== undefined && value !== "")
+        .map(([key, value]) => [key, String(value)])
+    )
+    const search = params.size > 0 ? `?${params}` : ""
+    return request<ActivityPage>(`/v1/activity${search}`)
+  },
+
   prepareClaim: (body: { batchId: string; recipient: string; payoutAddress?: string }) =>
     request<PreparedClaim>("/v1/claims/prepare", {
       method: "POST",
       body: JSON.stringify(body),
     }),
 
-  checkClaim: (body: { batchId: string; nullifier: string; recipient?: string }) =>
+  checkClaim: (body: { funder: string; batchId: string; nullifier: string; recipient?: string }) =>
     request<any>("/v1/claims/check", {
       method: "POST",
       body: JSON.stringify(body),
