@@ -79,9 +79,7 @@ export default function ClaimPage() {
   const [sdpRecipientId, setSdpRecipientId] = useState(searchParams.get("recipient") || "")
   const [isLookingUp, setIsLookingUp] = useState(false)
   const [retrievedClaim, setRetrievedClaim] = useState<PreparedClaim | null>(null)
-  const [manualMode, setManualMode] = useState(
-    !searchParams.get("recipient") && !searchParams.get("batch")
-  )
+  const [manualMode, setManualMode] = useState(false)
 
   // Form states
   const [batchId, setBatchId] = useState(searchParams.get("batch") || DEMO_CLAIM.batchId)
