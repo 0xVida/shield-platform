@@ -36,7 +36,7 @@ export async function clientAction({ request }: Route.ClientActionArgs) {
 const EMPTY: RecipientRow = { recipient: "", amount: "" }
 
 const input =
-  "w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500 transition-colors"
+  "w-full bg-neutral-50 dark:bg-neutral-950 border border-neutral-300 dark:border-neutral-800 rounded-lg px-3 py-2 text-sm text-neutral-900 dark:text-white focus:outline-none focus:border-emerald-500 transition-colors"
 
 /** Problems with the filled-in rows, as the API would see them. */
 function check(rows: RecipientRow[]): string[] {
@@ -100,29 +100,29 @@ export default function NewBatch() {
   }
 
   return (
-    <div className="min-h-screen bg-neutral-950 text-neutral-100 antialiased selection:bg-emerald-500/30 selection:text-emerald-300">
+    <div className="min-h-screen bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 antialiased selection:bg-emerald-500/30 selection:text-emerald-300 transition-colors">
       <AppHeader />
 
       <main className="max-w-3xl mx-auto px-4 py-12">
         <Link
           to="/batches"
-          className="inline-flex items-center gap-1.5 text-xs text-neutral-400 hover:text-white transition-colors mb-6"
+          className="inline-flex items-center gap-1.5 text-xs text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white transition-colors mb-6"
         >
           <ArrowLeft size={14} />
           Batches
         </Link>
 
         <div className="text-center mb-10">
-          <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-white mb-2">
+          <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-neutral-900 dark:text-white mb-2">
             New Confidential Batch
           </h1>
-          <p className="text-neutral-400 text-sm max-w-lg mx-auto">
+          <p className="text-neutral-600 dark:text-neutral-400 text-sm max-w-lg mx-auto">
             Each allocation gets its own secret and a Poseidon commitment. The amounts
             stay private; only the total and the batch's Merkle root are published.
           </p>
         </div>
 
-        <div className="bg-neutral-900/80 border border-neutral-800/80 rounded-2xl p-6 sm:p-8">
+        <div className="bg-white dark:bg-neutral-900/80 border border-neutral-200 dark:border-neutral-800/80 rounded-2xl p-6 sm:p-8 shadow-xs">
 
           {error && (
             <ErrorBox title="Batch not created" className="mb-6">
@@ -132,7 +132,7 @@ export default function NewBatch() {
 
           <div className="space-y-6">
             <div>
-              <label htmlFor="name" className="block text-xs font-medium text-neutral-300 mb-1.5">
+              <label htmlFor="name" className="block text-xs font-medium text-neutral-700 dark:text-neutral-300 mb-1.5">
                 Batch name (optional)
               </label>
               <input
@@ -145,14 +145,14 @@ export default function NewBatch() {
               />
             </div>
 
-            <div className="flex items-center justify-between pb-4 border-b border-neutral-800">
+            <div className="flex items-center justify-between pb-4 border-b border-neutral-200 dark:border-neutral-800">
               <div>
-                <h2 className="text-base font-semibold text-white">Recipients</h2>
-                <p className="text-xs text-neutral-400">
+                <h2 className="text-base font-semibold text-neutral-900 dark:text-white">Recipients</h2>
+                <p className="text-xs text-neutral-500 dark:text-neutral-400">
                   Amounts in tokens, up to 7 decimals. Up to {MAX_ALLOCATIONS} recipients.
                 </p>
               </div>
-              <label className="text-xs text-emerald-400 hover:text-emerald-300 flex items-center gap-1.5 transition-colors font-medium bg-emerald-950/40 border border-emerald-800/40 px-2.5 py-1 rounded-md cursor-pointer">
+              <label className="text-xs text-emerald-700 dark:text-emerald-400 hover:text-emerald-800 dark:hover:text-emerald-300 flex items-center gap-1.5 transition-colors font-medium bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-800/40 px-2.5 py-1 rounded-md cursor-pointer shadow-2xs">
                 <FileArrowUp size={13} />
                 Upload CSV
                 <input
@@ -199,7 +199,7 @@ export default function NewBatch() {
                     value={row.amount}
                     inputMode="decimal"
                     onChange={(e) => update(i, { amount: e.target.value })}
-                    className={`${input} font-mono font-medium text-emerald-400`}
+                    className={`${input} font-mono font-medium text-emerald-600 dark:text-emerald-400`}
                     placeholder="0.00"
                   />
                   <button
@@ -207,7 +207,7 @@ export default function NewBatch() {
                     aria-label={`Remove row ${i + 1}`}
                     disabled={rows.length === 1}
                     onClick={() => setRows(rows.filter((_, j) => j !== i))}
-                    className="h-9 flex items-center justify-center rounded-lg text-neutral-500 hover:text-red-300 hover:bg-red-950/40 transition-colors disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-neutral-500 cursor-pointer"
+                    className="h-9 flex items-center justify-center rounded-lg text-neutral-400 hover:text-red-500 dark:text-neutral-500 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-neutral-500 cursor-pointer"
                   >
                     <Trash size={15} />
                   </button>
@@ -217,7 +217,7 @@ export default function NewBatch() {
                 type="button"
                 disabled={rows.length >= MAX_ALLOCATIONS}
                 onClick={() => setRows([...rows, EMPTY])}
-                className="text-xs text-neutral-300 hover:text-white flex items-center gap-1.5 bg-neutral-800/80 px-2.5 py-1.5 rounded-md transition-colors cursor-pointer disabled:opacity-50"
+                className="text-xs text-neutral-700 dark:text-neutral-300 hover:text-neutral-900 dark:hover:text-white flex items-center gap-1.5 bg-neutral-100 dark:bg-neutral-800/80 px-2.5 py-1.5 rounded-md transition-colors cursor-pointer disabled:opacity-50 shadow-2xs"
               >
                 <Plus size={13} />
                 Add recipient
@@ -225,18 +225,18 @@ export default function NewBatch() {
             </div>
 
             {/* Summary */}
-            <div className="p-4 rounded-xl bg-neutral-950/60 border border-neutral-800/80 text-xs space-y-2">
-              <div className="text-neutral-400 flex items-center gap-2">
-                <Receipt size={16} className="text-emerald-400" />
+            <div className="p-4 rounded-xl bg-neutral-50 dark:bg-neutral-950/60 border border-neutral-200 dark:border-neutral-800/80 text-xs space-y-2">
+              <div className="text-neutral-600 dark:text-neutral-400 flex items-center gap-2">
+                <Receipt size={16} className="text-emerald-600 dark:text-emerald-400" />
                 <span>Batch summary:</span>
               </div>
-              <div className="grid grid-cols-2 gap-2 text-neutral-300 pt-1 font-mono text-[11px]">
+              <div className="grid grid-cols-2 gap-2 text-neutral-700 dark:text-neutral-300 pt-1 font-mono text-[11px]">
                 <div>
                   <span className="text-neutral-500 block">Recipients:</span> {filled.length}
                 </div>
                 <div>
                   <span className="text-neutral-500 block">Total (public):</span>
-                  <span className="text-emerald-400 font-semibold">
+                  <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
                     {formatAmount(total)} tokens
                   </span>
                 </div>
