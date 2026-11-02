@@ -70,7 +70,6 @@ export default function Home() {
           </a>
         </div>
 
-        {/* Feature Cards for Person 2 */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-20 text-left w-full">
           <div className="p-5 rounded-2xl bg-neutral-900/50 border border-neutral-800/80 backdrop-blur-sm">
             <div className="w-10 h-10 rounded-xl bg-neutral-800 flex items-center justify-center text-emerald-400 mb-3">
@@ -115,7 +114,7 @@ export default function Home() {
 
       {/* Footer */}
       <footer className="border-t border-neutral-900 py-6 text-center text-xs text-neutral-500">
-        ShieldZK • Person 2 Deliverable (Recipient Claims & Proof Generation)
+        ShieldZK
       </footer>
     </div>
   )
