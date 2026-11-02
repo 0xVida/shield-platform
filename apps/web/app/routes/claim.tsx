@@ -28,12 +28,24 @@ import {
 import {
   ShieldVaultClient,
   submitTransaction,
-  type SubmitStage,
+  type VaultTransaction,
 } from "@workspace/sdk/chain"
 import { useWallet } from "../context/wallet-context"
 import { WalletConnectButton } from "../components/wallet-button"
-import { api, type PreparedClaim } from "../lib/api"
+import { TxProgress, stageLabel, type TxStage } from "../components/tx-progress"
+import { TxReview } from "../components/tx-review"
+import { api, type PreparedClaim, type VaultConnection } from "../lib/api"
 import { formatAmount } from "../lib/amount"
+import { explorerUrl } from "../lib/explorer"
+import { claimReview, maxFee, type ReviewLine } from "../lib/tx-review"
+
+// The testnet deployment, for when the API doesn't say which vault it uses
+const FALLBACK_VAULT: VaultConnection = {
+  contractId: TESTNET_CONFIG.contracts.vault,
+  networkPassphrase: TESTNET_CONFIG.networkPassphrase,
+  rpcUrl: TESTNET_CONFIG.rpcUrl,
+  allowHttp: false,
+}
 
 // Depth-10 sample vector from batch.json (Batch 42, allocation 0)
 const DEMO_CLAIM = {
@@ -100,8 +112,21 @@ export default function ClaimPage() {
 
   // Withdrawal / settlement states
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [submitStage, setSubmitStage] = useState<SubmitStage | null>(null)
+  const [submitStage, setSubmitStage] = useState<TxStage | null>(null)
+  const [submitFailed, setSubmitFailed] = useState(false)
+  // The built claim, shown for review before the wallet signs it
+  const [review, setReview] = useState<{ tx: VaultTransaction; lines: ReviewLine[] } | null>(null)
   const [txHash, setTxHash] = useState<string | null>(null)
+
+  // Claim on the vault the API funds batches on, so both sides use the same one
+  const [vault, setVault] = useState<VaultConnection>(FALLBACK_VAULT)
+  useEffect(() => {
+    api
+      .config()
+      .then((config) => config.vault && setVault(config.vault))
+      .catch(() => {})
+  }, [])
+  const txLink = (hash: string) => explorerUrl(vault.networkPassphrase, "tx", hash)
 
   // Auto-lookup if batch and recipient parameters are present in URL
   useEffect(() => {
@@ -212,23 +237,20 @@ export default function ClaimPage() {
     }
   }
 
-  async function handleWithdraw() {
+  /** Builds and simulates the claim, then shows what the wallet will sign. */
+  async function handleReview() {
     if (!proofOutput || !walletAddress) return
     setError(null)
     setIsSubmitting(true)
+    setSubmitStage(null)
+    setSubmitFailed(false)
     try {
-      const client = new ShieldVaultClient({
-        contractId: TESTNET_CONFIG.contracts.vault,
-        networkPassphrase: TESTNET_CONFIG.networkPassphrase,
-        rpcUrl: TESTNET_CONFIG.rpcUrl,
-      })
-
       const cleanNullifier = nullifierHash.startsWith("0x")
         ? nullifierHash.slice(2)
         : nullifierHash
       const nullifierBigInt = BigInt("0x" + cleanNullifier)
 
-      const tx = await client.buildWithdraw({
+      const tx = await new ShieldVaultClient(vault).buildWithdraw({
         source: walletAddress,
         batchId: BigInt(batchId),
         amount: BigInt(amount),
@@ -236,19 +258,51 @@ export default function ClaimPage() {
         nullifier: nullifierBigInt,
         proof: proofOutput.proofBytes,
       })
-
-      const { hash } = await submitTransaction(tx, {
-        signTransaction,
-        onStage: (stage) => setSubmitStage(stage),
+      setReview({
+        tx,
+        lines: claimReview({
+          batchId,
+          amount: BigInt(amount),
+          recipient,
+          submitter: walletAddress,
+          vault: vault.contractId,
+          networkPassphrase: vault.networkPassphrase,
+          fee: maxFee(tx),
+        }),
       })
-      setTxHash(hash)
-      setStep(4)
     } catch (err: any) {
       console.error("Withdrawal error:", err)
       setError(err?.message || "Withdrawal failed on-chain")
     } finally {
       setIsSubmitting(false)
-      setSubmitStage(null)
+    }
+  }
+
+  /** Signs and sends the reviewed claim, showing its progress. */
+  async function handleWithdraw() {
+    if (!review) return
+    setError(null)
+    setIsSubmitting(true)
+    setSubmitFailed(false)
+    try {
+      const { hash } = await submitTransaction(review.tx, {
+        signTransaction,
+        onStage: (stage, hash) => {
+          setSubmitStage(stage)
+          if (hash) setTxHash(hash)
+        },
+      })
+      setTxHash(hash)
+      setSubmitStage("done")
+      setStep(4)
+    } catch (err: any) {
+      console.error("Withdrawal error:", err)
+      setSubmitFailed(true)
+      setError(err?.message || "Withdrawal failed on-chain")
+    } finally {
+      // A failed send may have signed it; build it afresh next time
+      setReview(null)
+      setIsSubmitting(false)
     }
   }
 
@@ -282,8 +336,8 @@ export default function ClaimPage() {
             <div className="hidden sm:flex items-center gap-2 text-neutral-400">
               <span>Vault:</span>
               <code className="px-2 py-1 bg-neutral-800/60 border border-neutral-700/60 rounded text-neutral-300 font-mono">
-                {TESTNET_CONFIG.contracts.vault.slice(0, 4)}...
-                {TESTNET_CONFIG.contracts.vault.slice(-4)}
+                {vault.contractId.slice(0, 4)}...
+                {vault.contractId.slice(-4)}
               </code>
             </div>
 
@@ -750,6 +804,23 @@ export default function ClaimPage() {
                 </div>
               </div>
 
+              {submitStage && (
+                <TxProgress
+                  stage={submitStage}
+                  failed={submitFailed}
+                  explorerHref={txHash ? txLink(txHash) : undefined}
+                />
+              )}
+
+              {review && !isSubmitting ? (
+                <TxReview
+                  title="Review your claim"
+                  lines={review.lines}
+                  confirmLabel="Sign with Freighter & Claim"
+                  onConfirm={handleWithdraw}
+                  onCancel={() => setReview(null)}
+                />
+              ) : (
               <div className="pt-2 flex justify-between items-center">
                 <Button
                   variant="outline"
@@ -760,13 +831,13 @@ export default function ClaimPage() {
                 </Button>
                 <Button
                   disabled={isSubmitting || !walletAddress}
-                  onClick={handleWithdraw}
+                  onClick={handleReview}
                   className="bg-emerald-500 hover:bg-emerald-400 text-neutral-950 font-semibold px-5 flex items-center gap-2 cursor-pointer disabled:opacity-50"
                 >
                   {isSubmitting ? (
                     <>
                       <ArrowsClockwise size={16} className="animate-spin" />
-                      {submitStage ? `${submitStage}...` : "Submitting Claim..."}
+                      {submitStage ? stageLabel(submitStage) : "Preparing your claim..."}
                     </>
                   ) : !walletAddress ? (
                     <>
@@ -776,11 +847,12 @@ export default function ClaimPage() {
                   ) : (
                     <>
                       <CheckCircle size={16} />
-                      Sign with Freighter & Claim
+                      Review Claim
                     </>
                   )}
                 </Button>
               </div>
+              )}
             </div>
           )}
 
@@ -808,7 +880,7 @@ export default function ClaimPage() {
                 </div>
                 <div className="text-[11px] text-neutral-500 pt-2 border-t border-neutral-900">
                   Vault Contract:{" "}
-                  <code className="text-neutral-400">{TESTNET_CONFIG.contracts.vault}</code>
+                  <code className="text-neutral-400">{vault.contractId}</code>
                 </div>
               </div>
 
@@ -819,15 +891,16 @@ export default function ClaimPage() {
                     setStep(1)
                     setProofOutput(null)
                     setTxHash(null)
+                    setSubmitStage(null)
                     setRetrievedClaim(null)
                   }}
                   className="border-neutral-800 text-neutral-300 hover:bg-neutral-800 cursor-pointer"
                 >
                   Start Another Claim
                 </Button>
-                {txHash && !txHash.startsWith("Simulated") && (
+                {txHash && txLink(txHash) && (
                   <a
-                    href={`https://stellar.expert/explorer/testnet/tx/${txHash}`}
+                    href={txLink(txHash)}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="bg-emerald-500 hover:bg-emerald-400 text-neutral-950 font-semibold px-4 py-2 rounded-lg text-sm inline-flex items-center gap-1.5 transition-colors cursor-pointer"

@@ -20,9 +20,22 @@ import { BatchStatusPill } from "../components/batch-status"
 import { DisburseHeader } from "../components/disburse-header"
 import { useWallet } from "../context/wallet-context"
 import { WalletConnectButton } from "../components/wallet-button"
+import type { VaultTransaction } from "@workspace/sdk/chain"
+import { TxProgress, stageLabel, type TxStage } from "../components/tx-progress"
+import { TxReview } from "../components/tx-review"
 import { formatAmount } from "../lib/amount"
-import { ApiError, api, type Batch, type BatchClaimExport, type VaultConnection } from "../lib/api"
-import { fundBatch } from "../lib/funding"
+import {
+  ApiError,
+  api,
+  type Batch,
+  type BatchClaimExport,
+  type TransactionStatus,
+  type VaultConnection,
+} from "../lib/api"
+import { explorerUrl } from "../lib/explorer"
+import { buildFunding, sendFunding } from "../lib/funding"
+import { fundingReview, maxFee, type ReviewLine } from "../lib/tx-review"
+import { APP_NETWORK_PASSPHRASE } from "../lib/wallet"
 
 export function meta() {
   return [{ title: "Batch · ShieldZK" }]
@@ -60,7 +73,10 @@ export async function clientAction({ params, request }: Route.ClientActionArgs) 
   }
 }
 
-const EXPLORER = "https://stellar.expert/explorer/testnet"
+/** A link to a transaction on the vault's network, if the explorer shows that network. */
+function txHref(vault: VaultConnection | null, hash: string): string | undefined {
+  return explorerUrl(vault?.networkPassphrase ?? APP_NETWORK_PASSPHRASE, "tx", hash)
+}
 
 const primary =
   "bg-emerald-500 hover:bg-emerald-400 text-neutral-950 font-semibold px-5 flex items-center gap-2 cursor-pointer disabled:opacity-50"
@@ -154,7 +170,7 @@ export default function BatchPage({ loaderData }: Route.ComponentProps) {
             )}
             {batch.status === "proving" && <ProvingStep />}
             {batch.status === "proved" && <FundStep batch={batch} vault={vault} />}
-            {batch.status === "funded" && <FundedStep batch={batch} />}
+            {batch.status === "funded" && <FundedStep batch={batch} vault={vault} />}
           </div>
         </div>
       </div>
@@ -301,11 +317,26 @@ function FundStep({ batch, vault }: { batch: Batch; vault: VaultConnection | nul
   const { address: funder, signTransaction } = useWallet()
   const [token, setToken] = useState<string>(import.meta.env.VITE_TOKEN_CONTRACT_ID ?? "")
   const [sent, setSent] = useState<Funding>()
-  const [funding, setFunding] = useState(false)
+  // The built deposit, shown for review before the wallet signs it
+  const [review, setReview] = useState<{ tx: VaultTransaction; lines: ReviewLine[] }>()
+  const [busy, setBusy] = useState(false)
+  const [stage, setStage] = useState<TxStage>()
+  const [failed, setFailed] = useState(false)
+  const [sendingHash, setSendingHash] = useState<string>()
+  const [onChain, setOnChain] = useState<TransactionStatus>()
   const [error, setError] = useState<string>()
   const total = formatAmount(BigInt(batch.total))
 
   useEffect(() => setSent(savedFunding(batch.batchId)), [batch.batchId])
+
+  // Once sent, show what the chain says about it: useful after a reload
+  useEffect(() => {
+    if (!sent) return
+    api
+      .tx(sent.txHash)
+      .then(setOnChain)
+      .catch(() => setOnChain(undefined))
+  }, [sent?.txHash])
 
   if (!vault) {
     return (
@@ -319,26 +350,60 @@ function FundStep({ batch, vault }: { batch: Batch; vault: VaultConnection | nul
     )
   }
 
-  async function fund() {
+  /** Builds and simulates the deposit, then shows what the wallet will sign. */
+  async function prepare() {
     if (!funder || !vault) return
-    setFunding(true)
+    setBusy(true)
     setError(undefined)
+    setStage(undefined)
+    setFailed(false)
     try {
-      const txHash = await fundBatch({
-        vault,
-        batch,
-        funder,
-        token: token.trim(),
-        signTransaction,
+      const tx = await buildFunding({ vault, batch, funder, token: token.trim() })
+      setReview({
+        tx,
+        lines: fundingReview({
+          batchId: batch.batchId,
+          total: BigInt(batch.total),
+          token: token.trim(),
+          funder,
+          vault: vault.contractId,
+          networkPassphrase: vault.networkPassphrase,
+          fee: maxFee(tx),
+        }),
       })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  /** Signs and sends the reviewed deposit, then asks the API to confirm it. */
+  async function fund() {
+    if (!review || !funder) return
+    setBusy(true)
+    setError(undefined)
+    setFailed(false)
+    try {
+      const txHash = await sendFunding(review.tx, {
+        signTransaction,
+        onStage: (next, hash) => {
+          setStage(next)
+          if (hash) setSendingHash(hash)
+        },
+      })
+      setStage("done")
       const sentFunding = { funder, token: token.trim(), txHash }
       saveFunding(batch.batchId, sentFunding)
       setSent(sentFunding)
       confirm(sentFunding)
     } catch (err) {
+      setFailed(true)
       setError(err instanceof Error ? err.message : String(err))
     } finally {
-      setFunding(false)
+      setBusy(false)
+      // A failed send may have signed it; build it afresh next time
+      setReview(undefined)
     }
   }
 
@@ -356,13 +421,22 @@ function FundStep({ batch, vault }: { batch: Batch; vault: VaultConnection | nul
         <div className="p-4 rounded-xl bg-neutral-950 border border-neutral-800 text-xs space-y-2 mb-4">
           <div className="text-neutral-400">Transaction:</div>
           <a
-            href={`${EXPLORER}/tx/${sent.txHash}`}
+            href={txHref(vault, sent.txHash)}
             target="_blank"
             rel="noopener noreferrer"
             className="font-mono text-emerald-400 break-all hover:text-emerald-300"
           >
             {sent.txHash}
           </a>
+          {onChain && (
+            <div className="text-[11px] text-neutral-400 pt-1">
+              {onChain.status === "confirmed"
+                ? `Confirmed on-chain in ledger ${onChain.ledger}.`
+                : onChain.status === "failed"
+                  ? "This transaction failed on-chain: nothing was deposited."
+                  : "Not on-chain yet: it may still be pending."}
+            </div>
+          )}
         </div>
         {fetcher.data?.error && <ErrorBox title="Not confirmed yet">{fetcher.data.error}</ErrorBox>}
         <div className="flex justify-end">
@@ -409,29 +483,47 @@ function FundStep({ batch, vault }: { batch: Batch; vault: VaultConnection | nul
         {!funder && <WalletConnectButton />}
       </div>
 
+      {stage && (
+        <TxProgress
+          stage={stage}
+          failed={failed}
+          explorerHref={sendingHash && txHref(vault, sendingHash)}
+        />
+      )}
+
       {error && <ErrorBox title="Not funded">{error}</ErrorBox>}
 
-      <div className="flex justify-end">
-        <Button disabled={!funder || !token.trim() || funding} onClick={fund} className={primary}>
-          {funding ? (
-            <>
-              <ArrowsClockwise size={16} className="animate-spin" />
-              Waiting for your wallet...
-            </>
-          ) : (
-            <>
-              <Coins size={16} />
-              Fund {total} Tokens
-            </>
-          )}
-        </Button>
-      </div>
+      {review && !busy ? (
+        <TxReview
+          title="Review the deposit"
+          lines={review.lines}
+          confirmLabel={`Sign & Fund ${total} Tokens`}
+          onConfirm={fund}
+          onCancel={() => setReview(undefined)}
+        />
+      ) : (
+        <div className="flex justify-end">
+          <Button disabled={!funder || !token.trim() || busy} onClick={prepare} className={primary}>
+            {busy ? (
+              <>
+                <ArrowsClockwise size={16} className="animate-spin" />
+                {stage ? stageLabel(stage) : "Preparing the deposit..."}
+              </>
+            ) : (
+              <>
+                <Coins size={16} />
+                Fund {total} Tokens
+              </>
+            )}
+          </Button>
+        </div>
+      )}
     </div>
   )
 }
 
 /** Step 4: a funded batch, and how much of it has been claimed. */
-function FundedStep({ batch }: { batch: Batch }) {
+function FundedStep({ batch, vault }: { batch: Batch; vault: VaultConnection | null }) {
   const { revalidate, state } = useRevalidator()
   const total = BigInt(batch.total)
   const withdrawn = batch.claims ? BigInt(batch.claims.withdrawn) : undefined
@@ -571,9 +663,9 @@ function FundedStep({ batch }: { batch: Batch }) {
         >
           Refresh
         </Button>
-        {batch.fundingTx && (
+        {batch.fundingTx && txHref(vault, batch.fundingTx) && (
           <a
-            href={`${EXPLORER}/tx/${batch.fundingTx}`}
+            href={txHref(vault, batch.fundingTx)}
             target="_blank"
             rel="noopener noreferrer"
             className="bg-emerald-500 hover:bg-emerald-400 text-neutral-950 font-semibold px-4 py-2 rounded-lg text-sm inline-flex items-center gap-1.5 transition-colors"
