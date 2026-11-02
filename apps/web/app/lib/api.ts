@@ -40,7 +40,14 @@ export type ActivityItem = {
       root: string
       total: string
     }
-  | { type: "withdrawn"; nullifier: string; recipient: string; amount: string }
+  | {
+      type: "withdrawn"
+      /** The funder whose batch paid the claim. */
+      funder: string
+      nullifier: string
+      recipient: string
+      amount: string
+    }
 )
 
 /** GET /v1/activity: a page of events, and how complete the history is. */
@@ -168,7 +175,7 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
-  checkClaim: (body: { batchId: string; nullifier: string; recipient?: string }) =>
+  checkClaim: (body: { funder: string; batchId: string; nullifier: string; recipient?: string }) =>
     request<any>("/v1/claims/check", {
       method: "POST",
       body: JSON.stringify(body),

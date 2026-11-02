@@ -62,6 +62,8 @@ export function fundingReview(r: {
  */
 export function claimReview(r: {
   batchId: string
+  /** Who funded the batch: batch ids are per funder. */
+  funder: string
   amount: bigint
   recipient: string
   submitter: string
@@ -71,6 +73,7 @@ export function claimReview(r: {
 }): ReviewLine[] {
   return [
     { label: "Action", value: `Claim from batch ${r.batchId}` },
+    address("Batch funded by", r.funder),
     { label: "Payout", value: `${formatAmount(r.amount)} tokens` },
     address("Paid to", r.recipient),
     address("Fee paid by", r.submitter),

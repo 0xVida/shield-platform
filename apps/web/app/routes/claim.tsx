@@ -85,6 +85,8 @@ export default function ClaimPage() {
 
   // Form states
   const [batchId, setBatchId] = useState(searchParams.get("batch") || DEMO_CLAIM.batchId)
+  // Batch ids are per funder, so a batch is (funder, batchId)
+  const [funder, setFunder] = useState(searchParams.get("funder") || "")
   const [amount, setAmount] = useState(searchParams.get("amount") || DEMO_CLAIM.amount)
   const [secret, setSecret] = useState(searchParams.get("secret") || DEMO_CLAIM.secret)
   const [leafIndex, setLeafIndex] = useState(
@@ -158,6 +160,7 @@ export default function ClaimPage() {
       })
       setRetrievedClaim(data)
       setBatchId(data.batchId)
+      setFunder(data.funder ?? "")
       setAmount(data.amount)
       setSecret(data.secret)
       setLeafIndex(data.leafIndex)
@@ -240,6 +243,13 @@ export default function ClaimPage() {
   /** Builds and simulates the claim, then shows what the wallet will sign. */
   async function handleReview() {
     if (!proofOutput || !walletAddress) return
+    if (!funder) {
+      setError(
+        "This claim doesn't say who funded the batch: batch ids are per funder. " +
+          "Look the claim up again, or enter the batch's funder in manual entry."
+      )
+      return
+    }
     setError(null)
     setIsSubmitting(true)
     setSubmitStage(null)
@@ -252,6 +262,7 @@ export default function ClaimPage() {
 
       const tx = await new ShieldVaultClient(vault).buildWithdraw({
         source: walletAddress,
+        funder,
         batchId: BigInt(batchId),
         amount: BigInt(amount),
         recipient,
@@ -262,6 +273,7 @@ export default function ClaimPage() {
         tx,
         lines: claimReview({
           batchId,
+          funder,
           amount: BigInt(amount),
           recipient,
           submitter: walletAddress,
@@ -564,6 +576,18 @@ export default function ClaimPage() {
                         onChange={(e) => setBatchId(e.target.value)}
                         className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500 transition-colors font-mono"
                         placeholder="42"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-neutral-300 mb-1.5">
+                        Batch Funder (G... or C...)
+                      </label>
+                      <input
+                        type="text"
+                        value={funder}
+                        onChange={(e) => setFunder(e.target.value.trim())}
+                        className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500 transition-colors font-mono"
+                        placeholder="The address that funded the batch"
                       />
                     </div>
 

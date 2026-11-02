@@ -7,6 +7,7 @@ const VAULT = "CB6RKTUOZVQKEKFMJFIKVM4C7JS7VRVDYK3IBQSW5GKBOSOEYXVZMFRK"
 const TOKEN = "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
 const ALICE = "GCJA22K2FAGFI3T3SIZATC5RFG3Z32PSNZPR7GC55JXFK556UL4IN2FC"
 const RELAYER = "GBGTYDVZL6Z4EL4ZTLY3LIYTBZQWMIL3FHJY5PJV4E6EFJ45HY4VBKZ2"
+const FUNDER = "GDJNT7ZRFEV3AUNHBE7B4VVAO2N4W23AND2FMYOZXZRFYW3FMUJDAKFC"
 
 describe("shortAddress", () => {
   test("keeps the first and last four characters", () => {
@@ -54,6 +55,7 @@ describe("claimReview", () => {
   test("shows who's paid and who pays the fee", () => {
     const lines = claimReview({
       batchId: "42",
+      funder: FUNDER,
       amount: 25_000_000n,
       recipient: ALICE,
       submitter: RELAYER,
@@ -62,6 +64,7 @@ describe("claimReview", () => {
     })
     expect(lines.map(({ label, value }) => [label, value])).toEqual([
       ["Action", "Claim from batch 42"],
+      ["Batch funded by", "GDJN…AKFC"],
       ["Payout", "2.5 tokens"],
       ["Paid to", "GCJA…N2FC"],
       ["Fee paid by", "GBGT…BKZ2"],

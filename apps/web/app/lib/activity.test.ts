@@ -25,6 +25,7 @@ const withdrawn: ActivityItem = {
   ledger: 5476025,
   ledgerClosedAt: "2026-10-30T23:42:45Z",
   txHash: "f66ae8f9",
+  funder: FUNDER,
   batchId: "1793403748164",
   nullifier: "456",
   recipient: ALICE,
